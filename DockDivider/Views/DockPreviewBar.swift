@@ -86,17 +86,7 @@ struct DockPreviewBar: View {
 
     @ViewBuilder
     private var orientationSwitcher: some View {
-        Picker("Dock Position", selection: Binding(
-            get: { model.orientation },
-            set: { newOrientation in
-                guard model.orientation != newOrientation else { return }
-                DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        model.orientation = newOrientation
-                    }
-                }
-            }
-        )) {
+        Picker("Dock Position", selection: $model.orientation.deferred().animation(.easeInOut(duration: 0.15))) {
             Label("Bottom Dock", systemImage: "dock.rectangle").tag(DividerOrientation.vertical)
             Label("Side Dock", systemImage: "sidebar.left").tag(DividerOrientation.horizontal)
         }
@@ -179,6 +169,7 @@ struct DockPreviewBar: View {
 
             // Procedural Water Caustic Refraction & Zen Ripple Overlay (0 KB bundle size)
             WaterPatternOverlay(isDark: currentIsDarkDock)
+                .equatable()
         }
     }
 
@@ -298,10 +289,8 @@ struct DockPreviewBar: View {
                 }
                 .onHover { hovering in
                     guard isHoveringDivider != hovering else { return }
-                    DispatchQueue.main.async {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.68)) {
-                            isHoveringDivider = hovering
-                        }
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.68)) {
+                        isHoveringDivider = hovering
                     }
                 }
         } else {
@@ -314,10 +303,8 @@ struct DockPreviewBar: View {
                 }
                 .onHover { hovering in
                     guard isHoveringDivider != hovering else { return }
-                    DispatchQueue.main.async {
-                        withAnimation(.spring(response: 0.22, dampingFraction: 0.68)) {
-                            isHoveringDivider = hovering
-                        }
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.68)) {
+                        isHoveringDivider = hovering
                     }
                 }
         }
@@ -402,10 +389,18 @@ struct DockPreviewBar: View {
     // MARK: - App Icons
 
     private static var iconCache: [String: NSImage] = [:]
+    private static var missingIconPaths: Set<String> = []
 
-    private func cachedSystemIcon(for path: String) -> NSImage {
+    private func cachedSystemIcon(for path: String) -> NSImage? {
         if let cached = Self.iconCache[path] {
             return cached
+        }
+        if Self.missingIconPaths.contains(path) {
+            return nil
+        }
+        guard FileManager.default.fileExists(atPath: path) else {
+            Self.missingIconPaths.insert(path)
+            return nil
         }
         let icon = NSWorkspace.shared.icon(forFile: path)
         Self.iconCache[path] = icon
@@ -414,8 +409,7 @@ struct DockPreviewBar: View {
 
     @ViewBuilder
     private func dockAppIcon(name: String, path: String, fallbackSystemName: String) -> some View {
-        if FileManager.default.fileExists(atPath: path) {
-            let icon = cachedSystemIcon(for: path)
+        if let icon = cachedSystemIcon(for: path) {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
@@ -606,7 +600,7 @@ struct DockTooltipShape: Shape {
 
 // MARK: - Procedural Water Wave Swells Overlay (Option 3 - 0 KB Bundle Size)
 
-struct WaterPatternOverlay: View {
+struct WaterPatternOverlay: View, Equatable {
     let isDark: Bool
 
     var body: some View {

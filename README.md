@@ -1,67 +1,146 @@
 # DockDivider
 
-A modern, native macOS utility to create custom visual dividers, spacers, labels, and quick-action tiles for your macOS Dock.
+A native macOS utility for creating visual dividers, labels, spacers, and
+clickable action tiles that live directly in your Dock.
 
-![macOS 14+](https://img.shields.io/badge/macOS-14.0%2B-blue)
-![Swift 6](https://img.shields.io/badge/Swift-6.0-orange)
-![Xcode 16](https://img.shields.io/badge/Xcode-16%2B-blue)
+DockDivider generates self-contained `.app` bundles and native Dock spacer
+files. Drag one from the app window into your Dock; there is no daemon, menu
+bar agent, or background process left behind.
 
----
-
-## ✨ Features
-
-- **Multiple Divider Styles**:
-  - **Line**: Clean vertical/horizontal separator with customizable thickness, height, opacity, and color.
-  - **Dashed**: Segmented dashed divider with configurable dash pattern and count.
-  - **Dot**: Subtle circular separator dot.
-  - **Label**: Vertical or horizontal text labels and SF Symbols.
-  - **Spacer**: Native macOS blank spacers (`Full`, `Half`, and `Flexible`) utilizing native Dock tile spacers with zero tooltip bubbles.
-  - **Image**: Custom user image or icon with configurable corner radii.
-- **Dock Sampling Eyedropper**: One-click magnifying eyedropper to sample the exact color, opacity, and dimensions of macOS's native Dock divider.
-- **Live Dock Preview**: Accurate desktop canvas preview with customizable wallpaper and light/dark glass appearance.
-- **Dock Orientation Aware**: Supports both Bottom Dock and Left/Right Side Dock, with automatic background maintenance that adapts divider orientation if you move your Dock.
-- **Interactive Click Actions**:
-  - Launch one or more applications and open web URLs.
-  - Execute Apple Shortcuts directly.
-  - Run shell commands (either interactively in your default terminal—e.g. Ghostty or Terminal—or silently in the background).
-  - 15 Built-in System Utility actions (Hide Other Apps, Toggle Dark Mode, Mute Audio, Open Trash, Empty Trash, Digital Color Meter, Activity Monitor, Sleep Displays, etc.).
-- **Drag & Drop**: Seamlessly drag divider bundles directly from the app window straight into the macOS Dock.
-- **Zero-Width App Bundles**: Synthesized `.app` bundles use invisible zero-width unicode identifiers to eliminate distracting text beneath dividers in your Dock.
+![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-blue)
+![Swift 5](https://img.shields.io/badge/Swift-5%20language%20mode-orange)
+![Xcode 15+](https://img.shields.io/badge/Xcode-15%2B-blue)
 
 ---
 
-## 🛠️ Requirements
+## Features
 
-- macOS 14.0 (Sonoma) or later
-- Xcode 15.0+ / Xcode 16.0+
-- Swift 5.9+ / Swift 6
-
----
-
-## 🚀 Building & Running
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/jackbbb95/DockDivider.git
-   cd DockDivider
-   ```
-2. Open `DockDivider.xcodeproj` in Xcode:
-   ```bash
-   open DockDivider.xcodeproj
-   ```
-3. Select the `DockDivider` scheme and choose **My Mac** as the destination.
-4. Press `Cmd + R` to build and run, or `Cmd + U` to execute the comprehensive test suite.
-
----
-
-## 🧱 Architecture
-
-The project consists of two primary targets:
-- **`DockDivider.app`**: The main SwiftUI application containing the live preview canvas, customization controls, and bundle synthesizer.
-- **`divider_runner`**: A standalone, zero-dependency Mach-O binary compiled into each generated divider bundle (`Contents/MacOS/divider_runner`) to instantly execute click actions with minimal overhead (< 15 ms).
+- **Divider styles**
+  - **Line** — a native-style separator with configurable thickness, height,
+    opacity, color, and orientation.
+  - **Dashed** — a segmented separator with a configurable dash count.
+  - **Dot** — a small centered circle.
+  - **Label** — horizontal or vertical text, or an SF Symbol.
+  - **Spacer** — true native Dock spacers (`.dockspace`, `.docksmallspace`,
+    `.dockflexspace`) when no click action or tooltip is configured.
+  - **Image** — PNG, JPEG, HEIC, TIFF, or SVG artwork with scale, offset,
+    opacity, and corner-radius controls.
+- **Live Dock preview** with light/dark glass and wallpaper context.
+- **Dock-aware orientation** for bottom and side Docks.
+- **Optional click actions**
+  - Launch a set of apps and web URLs.
+  - Run an Apple Shortcut.
+  - Run a shell command or a chosen script, in the background or a terminal.
+  - Built-in system actions such as Hide Others, Toggle Dark Mode, Empty Trash,
+    Mission Control, and Activity Monitor.
+- **Drag-to-Dock workflow** with revisioned background staging, so an edited
+  divider is never dragged with stale content.
+- **Draft persistence** in Application Support, separate from `UserDefaults`.
+- **Storage management** showing generated item count, disk usage, unused
+  bundles, and a confirmation-based cleanup sheet.
+- **Accessibility** labels, keyboard-reachable drag fallback, and
+  validation-before-drag for incomplete configurations.
 
 ---
 
-## 📄 License
+## Requirements
+
+- macOS 13.0 (Ventura) or later
+- Xcode 15.0 or later (the project uses the Swift 5 language mode)
+- No third-party dependencies
+
+DockDivider is distributed directly, outside the Mac App Store. The app is not
+sandboxed because it creates and repairs executable bundles in a folder you
+choose, and it ad-hoc signs each generated bundle so the Dock can launch it.
+
+---
+
+## Building and running
+
+```bash
+git clone https://github.com/jackbbb95/DockDivider.git
+cd DockDivider
+open DockDivider.xcodeproj
+```
+
+Select the **DockDivider** scheme and **My Mac**, then press `Cmd+R`.
+Run the test suite with `Cmd+U`, or from the command line:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild -project DockDivider.xcodeproj \
+  -scheme DockDivider \
+  -configuration Debug \
+  -destination 'platform=macOS' \
+  -only-testing:DockDividerTests test \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+---
+
+## Storage and safety
+
+Generated bundles live in `~/Library/Application Support/DockDividers` by
+default. Choose **Change…** in the footer to use a different root; DockDivider
+creates a `DockDividers` subfolder inside it (unless the selected folder is
+already named that).
+
+Each generated bundle contains:
+
+```text
+Divider-XXXXXXXX.app/
+└── Contents/
+    ├── Info.plist
+    ├── PkgInfo
+    ├── MacOS/
+    │   └── divider_runner
+    └── Resources/
+        ├── AppIcon.icns
+        ├── ActionConfig.json
+        ├── DividerModel.json
+        ├── CustomImage.png        # image style only
+        └── .dockdivider.json      # ownership/version marker
+```
+
+Deleting a bundle breaks the Dock icon that points to it. Use **Clean Up…** to
+review bundles that are no longer referenced by the Dock; live and currently
+staged bundles are always excluded. The folder's `README.txt` explains the same
+rules for anyone browsing it in Finder.
+
+DockDivider never edits `com.apple.dock.plist`, never runs `killall Dock`, and
+never deletes files without an explicit confirmation.
+
+---
+
+## Architecture
+
+- **`DockDivider.app`** — SwiftUI editor, live preview, icon renderer, bundle
+  synthesizer, storage maintenance, and drag staging.
+- **`divider_runner`** — a small standalone Mach-O executable embedded in each
+  generated bundle. It reads `ActionConfig.json`, performs the configured
+  action, and exits. The shared action model is compiled from
+  `Shared/ActionConfig.swift` into both targets so they cannot drift.
+- **`StorageLocationStore`** — owns the selected storage folder and its
+  security-scoped bookmark.
+- **`StagingController`** — revisioned staging state machine, drag ownership,
+  and cleanup of superseded artifacts.
+- **`BundleRepairer`** — updates older DockDivider bundles after app upgrades.
+- **`DraftPersistence`** — saves the last design as `Draft.json` outside
+  `UserDefaults`.
+
+The model layer (`DividerModel`, `ActionConfig`) is pure Foundation. AppKit and
+SwiftUI helpers live in separate extensions or views.
+
+---
+
+## Privacy
+
+DockDivider collects no analytics and makes no network requests. Generated
+bundles run only when you click them in the Dock. See
+`DockDivider/PrivacyInfo.xcprivacy` for the required-reason API declarations.
+
+---
+
+## License
 
 MIT License. See [LICENSE](LICENSE) for details.

@@ -13,14 +13,9 @@ struct AppearanceControlsView: View {
     @Binding var model: DividerModel
     @State private var isImageDropTargeted: Bool = false
     @State private var isShowingSymbolPicker: Bool = false
-
-    private enum FocusableField: Hashable {
-        case tooltip
-        case labelText
-        case symbolName
-    }
-
-    @FocusState private var focusedField: FocusableField?
+    @State private var isProcessingImage: Bool = false
+    @State private var imageImportError: String?
+    @State private var imageImportRevision: UInt64 = 0
 
     private let popularSymbols = [
         "star.fill",
@@ -51,13 +46,6 @@ struct AppearanceControlsView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: model.style) { newStyle in
-            if newStyle != .image && model.heightRatio > 1.0 {
-                DispatchQueue.main.async {
-                    model.heightRatio = 1.0
-                }
-            }
-        }
     }
 
     // MARK: - Header Section
@@ -70,25 +58,27 @@ struct AppearanceControlsView: View {
             Spacer()
 
             Button {
-                sampleNativeDividerFromScreen()
+                sampleNativeDividerColor()
             } label: {
                 HStack(spacing: 3) {
                     Image(systemName: "eyedropper")
-                    Text("Sample from Dock…")
+                    Text("Sample Color…")
                 }
             }
             .buttonStyle(.link)
             .font(.caption)
-            .help(model.style == .line ? "Click the built-in divider in your Dock with the magnifying eyedropper to match its exact live color and dimensions" : "")
+            .help(model.style == .line ? "Pick the built-in divider color from your Dock with the magnifying eyedropper and match native dimensions (2.0 pt thickness, 100% height)" : "")
             .opacity(model.style == .line ? 1.0 : 0.0)
             .allowsHitTesting(model.style == .line)
+            .accessibilityHidden(model.style != .line)
             .animation(.easeInOut(duration: 0.22), value: model.style == .line)
 
-            Button("Reset Defaults") {
+            Button("Reset Appearance") {
                 model.resetToNativeMatch()
             }
             .buttonStyle(.link)
             .font(.caption)
+            .help("Reset appearance settings to match the built-in Dock divider")
         }
     }
 
@@ -99,9 +89,9 @@ struct AppearanceControlsView: View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 SettingsLabeledRow("Spacer Width:") {
-                    Picker("Spacer Width", selection: $model.spacerSize) {
+                    Picker("Spacer Width", selection: $model.spacerSize.deferred()) {
                         ForEach(SpacerSize.allCases) { size in
-                            Text(size.rawValue).tag(size)
+                            Text(size.displayName).tag(size)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -119,7 +109,6 @@ struct AppearanceControlsView: View {
             SettingsLabeledRow("Tooltip:") {
                 TextField("Empty by default", text: $model.hoverLabel)
                     .textFieldStyle(.roundedBorder)
-                    .focused($focusedField, equals: .tooltip)
             }
 
             spacerInfoBox
@@ -159,9 +148,9 @@ struct AppearanceControlsView: View {
     private var colorSection: some View {
         if model.style != .image {
             SettingsLabeledRow("Color / Tint:") {
-                Picker("Color Preset", selection: $model.colorPreset) {
+                Picker("Color Preset", selection: $model.colorPreset.deferred()) {
                     ForEach(ColorPreset.allCases) { preset in
-                        Text(preset.rawValue).tag(preset)
+                        Text(preset.displayName).tag(preset)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -175,12 +164,11 @@ struct AppearanceControlsView: View {
                             model.effectiveColor
                         },
                         set: { newColor in
-                            DispatchQueue.main.async {
-                                model.updateCustomColor(from: newColor)
-                            }
+                            model.updateCustomColor(from: newColor)
                         }
                     ))
                     .labelsHidden()
+                    .accessibilityLabel("Custom divider color")
                 }
             }
         }
@@ -238,9 +226,9 @@ struct AppearanceControlsView: View {
     @ViewBuilder
     private var labelStyleSection: some View {
         SettingsLabeledRow("Label Mode:") {
-            Picker("Label Mode", selection: $model.labelMode) {
+            Picker("Label Mode", selection: $model.labelMode.deferred()) {
                 ForEach(LabelMode.allCases) { mode in
-                    Text(mode.rawValue).tag(mode)
+                    Text(mode.displayName).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
@@ -251,15 +239,6 @@ struct AppearanceControlsView: View {
             SettingsLabeledRow("Label Text:") {
                 TextField("DEV, AI, >_, etc.", text: $model.labelText)
                     .textFieldStyle(.roundedBorder)
-                    .focused($focusedField, equals: .labelText)
-                    .onChange(of: model.labelText) { newValue in
-                        if newValue.count > 4 {
-                            let truncated = String(newValue.prefix(4))
-                            DispatchQueue.main.async {
-                                model.labelText = truncated
-                            }
-                        }
-                    }
             }
 
             SettingsLabeledRow("") {
@@ -274,7 +253,6 @@ struct AppearanceControlsView: View {
                 HStack(spacing: 8) {
                     TextField("SF Symbol name (e.g. star.fill)", text: $model.symbolName)
                         .textFieldStyle(.roundedBorder)
-                        .focused($focusedField, equals: .symbolName)
 
                     if !model.symbolName.isEmpty && !isValidSymbol {
                         Image(systemName: "exclamationmark.triangle.fill")
@@ -304,10 +282,12 @@ struct AppearanceControlsView: View {
                     .buttonStyle(.bordered)
                     .help("Open the built-in macOS SF Symbols browser")
                     .popover(isPresented: $isShowingSymbolPicker, arrowEdge: .bottom) {
-                        SFSymbolPickerPopover(
-                            selectedSymbol: $model.symbolName,
-                            isPresented: $isShowingSymbolPicker
-                        )
+                        if isShowingSymbolPicker {
+                            SFSymbolPickerPopover(
+                                selectedSymbol: $model.symbolName,
+                                isPresented: $isShowingSymbolPicker
+                            )
+                        }
                     }
                 }
             }
@@ -343,6 +323,8 @@ struct AppearanceControlsView: View {
                         }
                         .buttonStyle(.plain)
                         .help(symbol)
+                        .accessibilityLabel(symbol)
+                        .accessibilityValue(model.symbolName == symbol ? "Selected" : "")
                     }
                 }
             }
@@ -355,7 +337,7 @@ struct AppearanceControlsView: View {
     private var imageStyleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SettingsLabeledRow("Image File:") {
-                if let data = model.imageData, let nsImage = NSImage(data: data) {
+                if let data = model.imageData, let nsImage = IconRenderer.cachedSourceImage(for: model) {
                     HStack(spacing: 8) {
                         Image(nsImage: nsImage)
                             .resizable()
@@ -371,16 +353,32 @@ struct AppearanceControlsView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
-                        Button("Replace...") {
-                            selectImageFile()
-                        }
-                        .font(.caption)
+                        if isProcessingImage {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Processing…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button("Replace...") {
+                                selectImageFile()
+                            }
+                            .font(.caption)
 
-                        Button("Clear") {
-                            model.imageData = nil
+                            Button("Clear") {
+                                clearImage()
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.red)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    }
+                } else if isProcessingImage {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Processing image…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 } else {
                     Button {
@@ -389,6 +387,13 @@ struct AppearanceControlsView: View {
                         Label("Choose Image...", systemImage: "photo")
                     }
                 }
+            }
+
+            if let imageImportError {
+                Label(imageImportError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .padding(.leading, SettingsLayout.labelWidth)
             }
 
             // Drag and Drop Zone
@@ -455,7 +460,6 @@ struct AppearanceControlsView: View {
             SettingsLabeledRow("Tooltip:") {
                 TextField("Empty by default", text: $model.hoverLabel)
                     .textFieldStyle(.roundedBorder)
-                    .focused($focusedField, equals: .tooltip)
             }
 
             tooltipInfoBox
@@ -491,18 +495,14 @@ struct AppearanceControlsView: View {
 
     // MARK: - Image Helpers
 
-    private func sampleNativeDividerFromScreen() {
+    private func sampleNativeDividerColor() {
         NSColorSampler().show { selectedColor in
             guard let selectedColor = selectedColor else { return }
-            DispatchQueue.main.async {
-                model.style = .line
-                model.orientation = DividerOrientation.currentSystemDockOrientation
+            Task { @MainActor in
                 model.colorPreset = .custom
                 model.updateCustomColor(from: Color(nsColor: selectedColor))
-                model.opacity = 1.0
-                model.thickness = 1.5
+                model.thickness = 2.0
                 model.heightRatio = 1.0
-                model.verticalOffset = 0.0
             }
         }
     }
@@ -519,10 +519,88 @@ struct AppearanceControlsView: View {
         }
     }
 
+    private enum ImageImportResult: Sendable {
+        case success(ProcessedImage)
+        case failure(String)
+    }
+
     private func loadImage(from url: URL) {
-        if let data = try? Data(contentsOf: url), NSImage(data: data) != nil {
-            model.imageData = data
+        let revision = beginImageImport()
+
+        Task { @MainActor in
+            let result: ImageImportResult = await Task.detached(priority: .userInitiated) {
+                do {
+                    return .success(try CustomImageProcessor.process(fileURL: url))
+                } catch let error as ImageProcessingError {
+                    return .failure(error.errorDescription ?? "DockDivider couldn’t read that image.")
+                } catch {
+                    return .failure(error.localizedDescription)
+                }
+            }.value
+
+            // SVG and other vector formats that ImageIO cannot decode are
+            // rasterized by AppKit on the main actor as a fallback.
+            if case .failure = result,
+               let image = NSImage(contentsOf: url),
+               let processed = CustomImageProcessor.rasterize(image: image) {
+                finishImageImport(.success(processed), revision: revision)
+            } else {
+                finishImageImport(result, revision: revision)
+            }
         }
+    }
+
+    private func importImageData(_ data: Data) {
+        let revision = beginImageImport()
+
+        Task { @MainActor in
+            let result: ImageImportResult = await Task.detached(priority: .userInitiated) {
+                do {
+                    return .success(try CustomImageProcessor.process(data: data))
+                } catch let error as ImageProcessingError {
+                    return .failure(error.errorDescription ?? "DockDivider couldn’t read that image.")
+                } catch {
+                    return .failure(error.localizedDescription)
+                }
+            }.value
+
+            if case .failure = result,
+               let image = NSImage(data: data),
+               let processed = CustomImageProcessor.rasterize(image: image) {
+                finishImageImport(.success(processed), revision: revision)
+            } else {
+                finishImageImport(result, revision: revision)
+            }
+        }
+    }
+
+    private func beginImageImport() -> UInt64 {
+        imageImportRevision &+= 1
+        isProcessingImage = true
+        imageImportError = nil
+        return imageImportRevision
+    }
+
+    private func finishImageImport(_ result: ImageImportResult, revision: UInt64) {
+        // A newer import (or Clear) superseded this one.
+        guard revision == imageImportRevision else { return }
+
+        isProcessingImage = false
+        switch result {
+        case .success(let image):
+            model.imageData = image.data
+            model.imageID = image.imageID
+        case .failure(let message):
+            imageImportError = message
+        }
+    }
+
+    private func clearImage() {
+        imageImportRevision &+= 1
+        isProcessingImage = false
+        imageImportError = nil
+        model.imageData = nil
+        model.imageID = nil
     }
 
     private func handleImageDrop(providers: [NSItemProvider]) -> Bool {
@@ -545,9 +623,9 @@ struct AppearanceControlsView: View {
             return true
         } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
             provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                if let data = data, NSImage(data: data) != nil {
+                if let data {
                     DispatchQueue.main.async {
-                        self.model.imageData = data
+                        self.importImageData(data)
                     }
                 }
             }

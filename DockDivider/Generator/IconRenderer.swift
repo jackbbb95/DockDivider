@@ -24,18 +24,35 @@ enum IconRenderer {
     /// In the Apple ICNS specification, `64x64` (`32x32@2x`) and `1024x1024` (`512x512@2x`) are
     /// `@2x` Retina slots only (`144 DPI`), whereas `16`, `32`, `128`, `256`, and `512` exist at `72 DPI` (`@1x`).
     static let icnsEntries: [ICNSEntry] = [
-        ICNSEntry(pixelSize: 16, dpi: 72),    // 16x16 @1x
-        ICNSEntry(pixelSize: 32, dpi: 144),   // 16x16 @2x
-        ICNSEntry(pixelSize: 32, dpi: 72),    // 32x32 @1x
-        ICNSEntry(pixelSize: 64, dpi: 144),   // 32x32 @2x
-        ICNSEntry(pixelSize: 128, dpi: 72),   // 128x128 @1x
-        ICNSEntry(pixelSize: 256, dpi: 144),  // 256x256 @2x
-        ICNSEntry(pixelSize: 256, dpi: 72),   // 256x256 @1x
-        ICNSEntry(pixelSize: 512, dpi: 144),  // 256x256 @2x
-        ICNSEntry(pixelSize: 512, dpi: 72)    // 512x512 @1x
+        ICNSEntry(pixelSize: 16, dpi: 72),     // 16x16 @1x
+        ICNSEntry(pixelSize: 32, dpi: 144),    // 16x16 @2x
+        ICNSEntry(pixelSize: 32, dpi: 72),     // 32x32 @1x
+        ICNSEntry(pixelSize: 64, dpi: 144),    // 32x32 @2x
+        ICNSEntry(pixelSize: 128, dpi: 72),    // 128x128 @1x
+        ICNSEntry(pixelSize: 256, dpi: 144),   // 256x256 @2x
+        ICNSEntry(pixelSize: 256, dpi: 72),    // 256x256 @1x
+        ICNSEntry(pixelSize: 512, dpi: 144),   // 256x256 @2x
+        ICNSEntry(pixelSize: 512, dpi: 72),    // 512x512 @1x
+        ICNSEntry(pixelSize: 1024, dpi: 144)   // 512x512 @2x
     ]
 
     static func renderIconData(for model: DividerModel) -> Data? {
+        let key = cacheKey(for: model)
+        if let key, let cached = RenderCache.shared.data(for: key) {
+            return cached
+        }
+
+        guard let data = buildIconData(for: model) else {
+            return nil
+        }
+
+        if let key {
+            RenderCache.shared.store(data, for: key)
+        }
+        return data
+    }
+
+    private static func buildIconData(for model: DividerModel) -> Data? {
         let mutableData = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             mutableData as CFMutableData,
@@ -46,14 +63,14 @@ enum IconRenderer {
             return nil
         }
 
-        // Cache rendered CGImages by pixelSize so shared sizes (32, 256, 512) are only drawn once
-        var cache: [Int: CGImage] = [:]
+        // Reuse one CGImage for every ICNS entry that shares a pixel size.
+        var sizeCache: [Int: CGImage] = [:]
         for entry in icnsEntries {
             let cgImage: CGImage?
-            if let existing = cache[entry.pixelSize] {
+            if let existing = sizeCache[entry.pixelSize] {
                 cgImage = existing
             } else if let rendered = renderCGImage(for: model, pixelSize: entry.pixelSize) {
-                cache[entry.pixelSize] = rendered
+                sizeCache[entry.pixelSize] = rendered
                 cgImage = rendered
             } else {
                 cgImage = nil
@@ -85,7 +102,39 @@ enum IconRenderer {
         return NSImage(size: size)
     }
 
+    /// Returns the source image for the custom-image style, decoded once per
+    /// `imageID` instead of once per ICNS pixel size.
+    static func cachedSourceImage(for model: DividerModel) -> NSImage? {
+        guard model.style == .image else { return nil }
+        return RenderCache.shared.sourceImage(for: model)
+    }
+
     static func renderCGImage(for model: DividerModel, pixelSize: Int) -> CGImage? {
+        let key = cacheKey(for: model)
+        if let key, let cached = RenderCache.shared.image(for: key, pixelSize: pixelSize) {
+            return cached
+        }
+
+        guard let image = renderCGImageUncached(for: model, pixelSize: pixelSize) else {
+            return nil
+        }
+
+        if let key {
+            RenderCache.shared.store(image, for: key, pixelSize: pixelSize)
+        }
+        return image
+    }
+
+    private static func cacheKey(for model: DividerModel) -> RenderKey? {
+        // A directly-assigned image without an identity cannot be cached safely:
+        // two different images would share `imageID == nil` and collide.
+        if model.style == .image, model.imageData != nil, model.imageID == nil {
+            return nil
+        }
+        return RenderKey(model: model)
+    }
+
+    private static func renderCGImageUncached(for model: DividerModel, pixelSize: Int) -> CGImage? {
         let width = pixelSize
         let height = pixelSize
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -196,6 +245,9 @@ enum IconRenderer {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = graphicsContext
 
+            context.saveGState()
+            context.clip(to: CGRect(x: 0, y: 0, width: width, height: height))
+
             switch model.labelMode {
             case .text:
                 let rawText = model.labelText.isEmpty ? "DEV" : String(model.labelText.prefix(4))
@@ -203,8 +255,15 @@ enum IconRenderer {
                 let paragraphStyle = NSMutableParagraphStyle()
                 paragraphStyle.alignment = .center
 
-                let baseFontSize = model.isVerticalText ? 14.0 : 18.0
-                let fontSize = max(8.0, baseFontSize * scale * (CGFloat(model.heightRatio) / 0.65))
+                let maximumDimension = CGFloat(pixelSize) * 0.90
+                let fontSize = fittedLabelFontSize(
+                    text: displayText,
+                    isVertical: model.isVerticalText,
+                    scale: scale,
+                    heightRatio: CGFloat(model.heightRatio),
+                    maximumDimension: maximumDimension
+                )
+
                 let font = NSFont.boldSystemFont(ofSize: fontSize)
                 let attributes: [NSAttributedString.Key: Any] = [
                     .font: font,
@@ -245,10 +304,11 @@ enum IconRenderer {
                 }
             }
 
+            context.restoreGState()
             NSGraphicsContext.restoreGraphicsState()
 
         case .image:
-            if let data = model.imageData, let img = NSImage(data: data) {
+            if let img = cachedSourceImage(for: model) {
                 let graphicsContext = NSGraphicsContext(cgContext: context, flipped: false)
                 NSGraphicsContext.saveGraphicsState()
                 NSGraphicsContext.current = graphicsContext
@@ -278,6 +338,33 @@ enum IconRenderer {
     }
 
     // MARK: - Style Drawing Helpers
+
+    /// Shrinks the label until the measured text fits inside the icon canvas.
+    /// A few points of margin are reserved so anti-aliased edges do not touch
+    /// the canvas boundary.
+    private static func fittedLabelFontSize(
+        text: String,
+        isVertical: Bool,
+        scale: CGFloat,
+        heightRatio: CGFloat,
+        maximumDimension: CGFloat
+    ) -> CGFloat {
+        let normalizedRatio = max(0.2, heightRatio)
+        let baseSize = (isVertical ? 14.0 : 18.0) * scale * (normalizedRatio / 0.65)
+        var size = max(1.0, baseSize)
+        let minimumSize = max(1.0, 4.0 * scale)
+
+        while size > minimumSize {
+            let font = NSFont.boldSystemFont(ofSize: size)
+            let measured = (text as NSString).size(withAttributes: [.font: font])
+            if measured.width <= maximumDimension, measured.height <= maximumDimension {
+                return size
+            }
+            size -= max(0.25, size * 0.08)
+        }
+
+        return minimumSize
+    }
 
     private static func aspectFitRect(
         for imageSize: NSSize,

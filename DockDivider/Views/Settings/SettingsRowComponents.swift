@@ -7,6 +7,26 @@
 
 import SwiftUI
 
+// MARK: - Binding Extensions
+
+extension Binding where Value: Equatable {
+    /// Returns a binding that defers mutations to the next runloop cycle to prevent
+    /// "Publishing changes from within view updates is not allowed" warnings when
+    /// controls backed by AppKit (such as NSSegmentedControl or NSSlider) fire action
+    /// callbacks during view hierarchy evaluation or layout.
+    func deferred() -> Binding<Value> {
+        Binding(
+            get: { self.wrappedValue },
+            set: { newValue in
+                guard newValue != self.wrappedValue else { return }
+                DispatchQueue.main.async {
+                    self.wrappedValue = newValue
+                }
+            }
+        )
+    }
+}
+
 // MARK: - Settings Layout Metrics
 
 enum SettingsLayout {
@@ -23,16 +43,6 @@ struct SettingsLabeledRow<Content: View>: View {
 
     init(
         _ label: String,
-        alignment: VerticalAlignment = .center,
-        @ViewBuilder content: @escaping () -> Content
-    ) {
-        self.label = label
-        self.alignment = alignment
-        self.content = content
-    }
-
-    init(
-        label: String,
         alignment: VerticalAlignment = .center,
         @ViewBuilder content: @escaping () -> Content
     ) {
@@ -75,27 +85,16 @@ struct SettingsSliderRow<V: BinaryFloatingPoint>: View where V.Stride: BinaryFlo
         self.formattedValue = formattedValue
     }
 
-    init(
-        label: String,
-        value: Binding<V>,
-        range: ClosedRange<V>,
-        step: V? = nil,
-        formattedValue: String
-    ) {
-        self.label = label
-        self._value = value
-        self.range = range
-        self.step = step
-        self.formattedValue = formattedValue
-    }
-
     private var safeValueBinding: Binding<V> {
         Binding(
-            get: { value },
+            get: {
+                min(max(value, range.lowerBound), range.upperBound)
+            },
             set: { newValue in
-                guard abs(Double(newValue - value)) > 1e-4 else { return }
+                let clamped = min(max(newValue, range.lowerBound), range.upperBound)
+                guard abs(Double(clamped - value)) > 1e-4 else { return }
                 DispatchQueue.main.async {
-                    value = newValue
+                    value = clamped
                 }
             }
         )
@@ -105,13 +104,18 @@ struct SettingsSliderRow<V: BinaryFloatingPoint>: View where V.Stride: BinaryFlo
         SettingsLabeledRow(label) {
             if let step = step {
                 Slider(value: safeValueBinding, in: range, step: V.Stride(step))
+                    .accessibilityLabel(label)
+                    .accessibilityValue(formattedValue)
             } else {
                 Slider(value: safeValueBinding, in: range)
+                    .accessibilityLabel(label)
+                    .accessibilityValue(formattedValue)
             }
             Text(formattedValue)
                 .frame(width: SettingsLayout.sliderValueWidth, alignment: .trailing)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
     }
 }

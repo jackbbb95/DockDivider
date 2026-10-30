@@ -9,247 +9,318 @@ import Foundation
 import Combine
 import AppKit
 
+/// Injectable dependencies for `AppState`.
+///
+/// Production uses `.live`. Unit tests inject a temporary application-support
+/// folder and a dedicated `UserDefaults` suite so they never read or mutate the
+/// developer's real divider storage, bookmark, or Dock configuration.
+nonisolated struct AppEnvironment {
+    var userDefaults: UserDefaults
+    var applicationSupportDirectory: URL
+    var repairOnLaunch: Bool
+    var stagesOnLaunch: Bool
+    var stagesOnDraftChanges: Bool
+    var registerWithLaunchServices: Bool
+    var stagingDebounce: TimeInterval
+    var persistsDraft: Bool = true
+
+    static var live: AppEnvironment {
+        AppEnvironment(
+            userDefaults: .standard,
+            applicationSupportDirectory: FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first!,
+            repairOnLaunch: true,
+            stagesOnLaunch: true,
+            stagesOnDraftChanges: true,
+            registerWithLaunchServices: true,
+            stagingDebounce: 0.25
+        )
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
 
     // MARK: - Published State
 
     @Published var draft: DividerModel = DividerModel()
-    @Published private(set) var stagedAppURL: URL?
-    @Published private(set) var isStaging: Bool = false
-    @Published var lastError: String? = nil
-    @Published private(set) var customStorageURL: URL? = nil
+    @Published private(set) var storageSummary: StorageSummary? = nil
 
-    // MARK: - Private Properties
+    // MARK: - Collaborators
 
-    private static let storageBookmarkKey = "DockDivider.customStorageBookmark"
-    private var isStagedBundleConsumed: Bool = false
+    private let environment: AppEnvironment
+    private let storageLocation: StorageLocationStore
+    private let staging: StagingController
+    private let repairer: BundleRepairer
     private var cancellables = Set<AnyCancellable>()
 
-    // MARK: - Computed Properties
+    // MARK: - Forwarded State
 
+    /// The artifact that can currently be dragged, if any.
+    var stagedBundle: StagedBundle? {
+        staging.stagedBundle
+    }
+
+    var stagedAppURL: URL? {
+        staging.stagedAppURL
+    }
+
+    var stagingState: StagingState {
+        staging.stagingState
+    }
+
+    var isStaging: Bool {
+        staging.isStaging
+    }
+
+    var stagingError: StagingError? {
+        staging.stagingError
+    }
+
+    var isReadyForDrag: Bool {
+        staging.isReadyForDrag && validationWarning == nil
+    }
+
+    /// Explains why the current design cannot be dragged yet.
+    var validationWarning: String? {
+        draft.validationWarning
+    }
+
+    var customStorageURL: URL? {
+        storageLocation.customStorageURL
+    }
+
+    /// Folder that actually contains generated bundles. A custom selection is
+    /// treated as a root, and generated content is placed in a `DockDividers`
+    /// subfolder so `~/Applications` never fills with invisible app bundles.
     var effectiveStorageDirectory: URL {
-        if let customStorageURL = customStorageURL {
-            return customStorageURL
-        }
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("DockDividers", isDirectory: true)
+        storageLocation.effectiveStorageDirectory
     }
 
     var storageDisplayPath: String {
-        (effectiveStorageDirectory.path as NSString).abbreviatingWithTildeInPath
+        storageLocation.storageDisplayPath
+    }
+
+    var isUsingDefaultStorageLocation: Bool {
+        storageLocation.isUsingDefaultStorageLocation
+    }
+
+    var storageLocationWarning: String? {
+        storageLocation.storageLocationWarning
     }
 
     // MARK: - Initialization & Lifecycle
 
-    init() {
-        restoreCustomStorageBookmark()
+    init(environment: AppEnvironment = .live) {
+        self.environment = environment
+        self.storageLocation = StorageLocationStore(
+            userDefaults: environment.userDefaults,
+            applicationSupportDirectory: environment.applicationSupportDirectory
+        )
+        self.staging = StagingController(
+            registerWithLaunchServices: environment.registerWithLaunchServices
+        )
+        self.repairer = BundleRepairer(isEnabled: environment.repairOnLaunch)
+
+        if environment.persistsDraft,
+           let savedDraft = DraftPersistence.load(from: environment.applicationSupportDirectory) {
+            draft = savedDraft
+        } else {
+            draft.orientation = DividerOrientation.currentSystemDockOrientation
+        }
+
+        setUpObservations()
+
         repairExistingDividerBundles()
 
-        $draft
-            .dropFirst()
-            .debounce(for: .milliseconds(250), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
+        if environment.stagesOnLaunch {
+            DispatchQueue.main.async { [weak self] in
                 self?.stageImmediately()
             }
+        }
+
+        refreshStorageSummary()
+    }
+
+    private func setUpObservations() {
+        // Forward collaborator changes so views observing `AppState` re-render
+        // when staging or storage selection changes.
+        storageLocation.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
             .store(in: &cancellables)
+
+        staging.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        staging.onStorageChanged = { [weak self] in
+            self?.refreshStorageSummary()
+        }
+
+        if environment.stagesOnDraftChanges {
+            $draft
+                .dropFirst()
+                .debounce(
+                    for: .milliseconds(max(0, Int(environment.stagingDebounce * 1000))),
+                    scheduler: DispatchQueue.main
+                )
+                .sink { [weak self] _ in
+                    self?.stageImmediately()
+                }
+                .store(in: &cancellables)
+        }
+
+        if environment.persistsDraft {
+            $draft
+                .dropFirst()
+                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+                .sink { [weak self] draft in
+                    guard let self else { return }
+                    let directory = self.environment.applicationSupportDirectory
+                    Task.detached(priority: .utility) {
+                        DraftPersistence.save(draft, to: directory)
+                    }
+                }
+                .store(in: &cancellables)
+
+            NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)
+                .sink { [weak self] _ in
+                    guard let self else { return }
+                    DraftPersistence.save(self.draft, to: self.environment.applicationSupportDirectory)
+                }
+                .store(in: &cancellables)
+        }
 
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in
-                DispatchQueue.main.async {
-                    self?.repairExistingDividerBundles()
-                }
+                guard let self else { return }
+                self.repairExistingDividerBundles()
+                self.refreshStorageSummary()
             }
             .store(in: &cancellables)
-
-        DispatchQueue.main.async { [weak self] in
-            self?.stageImmediately()
-        }
     }
 
     // MARK: - Storage Directory Management
 
-    private func restoreCustomStorageBookmark() {
-        guard let bookmarkData = UserDefaults.standard.data(forKey: Self.storageBookmarkKey) else {
-            return
-        }
-        var isStale = false
-        var resolvedURL: URL?
-
-        if let url = try? URL(resolvingBookmarkData: bookmarkData, options: [.withSecurityScope], relativeTo: nil, bookmarkDataIsStale: &isStale) {
-            resolvedURL = url
-        } else if let url = try? URL(resolvingBookmarkData: bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale) {
-            resolvedURL = url
-        }
-
-        guard let url = resolvedURL else {
-            UserDefaults.standard.removeObject(forKey: Self.storageBookmarkKey)
-            return
-        }
-
-        _ = url.startAccessingSecurityScopedResource()
-        customStorageURL = url
-
-        if isStale {
-            let newBookmark = (try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil))
-                ?? (try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
-            if let newBookmark = newBookmark {
-                UserDefaults.standard.set(newBookmark, forKey: Self.storageBookmarkKey)
-            }
-        }
-    }
-
     func selectStorageDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Use Folder"
-        panel.message = "Choose a folder to store generated Dock Divider apps (e.g. ~/Applications/DockDividers)"
-        panel.directoryURL = FileManager.default.urls(for: .applicationDirectory, in: .userDomainMask).first
-
-        if panel.runModal() == .OK, let url = panel.url {
-            updateCustomStorageURL(url)
-        }
+        guard storageLocation.selectStorageDirectory() else { return }
+        handleStorageLocationChanged()
     }
 
     func resetStorageDirectory() {
-        updateCustomStorageURL(nil)
+        storageLocation.resetStorageDirectory()
+        handleStorageLocationChanged()
     }
 
     func updateCustomStorageURL(_ url: URL?) {
-        customStorageURL?.stopAccessingSecurityScopedResource()
-        if let url = url {
-            _ = url.startAccessingSecurityScopedResource()
-            let bookmark = (try? url.bookmarkData(options: [.withSecurityScope], includingResourceValuesForKeys: nil, relativeTo: nil))
-                ?? (try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
-            if let bookmark = bookmark {
-                UserDefaults.standard.set(bookmark, forKey: Self.storageBookmarkKey)
-            }
-            customStorageURL = url
-        } else {
-            UserDefaults.standard.removeObject(forKey: Self.storageBookmarkKey)
-            customStorageURL = nil
-        }
-        stageImmediately()
+        storageLocation.updateCustomStorageURL(url)
+        handleStorageLocationChanged()
     }
 
     func revealStorageDirectoryInFinder() {
-        try? FileManager.default.createDirectory(at: effectiveStorageDirectory, withIntermediateDirectories: true)
-        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: effectiveStorageDirectory.path)
+        storageLocation.revealInFinder()
     }
 
-    // MARK: - Bundle Staging & Drag Lifecycle
+    private func handleStorageLocationChanged() {
+        StorageMaintenance.ensureReadme(in: effectiveStorageDirectory)
+        stageImmediately()
+        refreshStorageSummary()
+    }
 
-    func stageImmediately() {
-        let previousURL = (!isStagedBundleConsumed) ? stagedAppURL : nil
+    // MARK: - Storage Census & Cleanup
 
-        // When in Blank Spacer mode with no click action and no custom hover tooltip,
-        // fit native .dockspace / .docksmallspace / .dockflexspace trigger file so
-        // Dock.app creates a true DOCKSpacerTile (zero tooltip bubble and zero clickability).
-        let isPassiveNativeSpacer = (draft.style == .spacer)
-            && (draft.actionConfig.actionType == .none)
-            && draft.hoverLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    /// Recomputes the small summary shown in the footer. The full item list is
+    /// loaded on demand by the cleanup sheet.
+    func refreshStorageSummary() {
+        let directory = effectiveStorageDirectory
+        let excludedPaths = staging.storageExclusions
 
-        if isPassiveNativeSpacer {
-            do {
-                let newURL = try BundleSynthesizer.createNativeSpacerFile(
-                    size: draft.spacerSize,
-                    outputDirectory: effectiveStorageDirectory
-                )
-                if let previousURL = previousURL, previousURL != newURL {
-                    try? FileManager.default.removeItem(at: previousURL)
-                }
-                DispatchQueue.main.async {
-                    if self.stagedAppURL != newURL {
-                        self.stagedAppURL = newURL
-                    }
-                    self.isStagedBundleConsumed = false
-                    if self.lastError != nil {
-                        self.lastError = nil
-                    }
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    if self.lastError != error.localizedDescription {
-                        self.lastError = error.localizedDescription
-                    }
-                }
-            }
-            return
-        }
-
-        guard let iconData = IconRenderer.renderIconData(for: draft) else {
-            DispatchQueue.main.async {
-                if self.lastError != "Failed to render icon data" {
-                    self.lastError = "Failed to render icon data"
-                }
-            }
-            return
-        }
-
-        // Use 256x256 pt (@2x = 512x512 px) for NSWorkspace.shared.setIcon so IconServices
-        // never attempts to encode an invalid 1024x1024 @1x (2048px) slot
-        let previewImage = IconRenderer.renderNSImage(for: draft, size: CGSize(width: 256, height: 256))
-
-        do {
-            let newURL = try BundleSynthesizer.createDividerApp(
-                iconData: iconData,
-                previewImage: previewImage,
-                config: draft.actionConfig,
-                hoverLabel: draft.hoverLabel,
-                model: draft,
-                outputDirectory: effectiveStorageDirectory
+        Task { [weak self] in
+            let census = await StorageMaintenance.buildCensus(
+                for: directory,
+                excluding: excludedPaths
             )
-            if let previousURL = previousURL, previousURL != newURL {
-                try? FileManager.default.removeItem(at: previousURL)
+            guard let self else { return }
+            guard StoragePath.canonical(self.effectiveStorageDirectory) == StoragePath.canonical(directory) else {
+                return
             }
-            DispatchQueue.main.async {
-                if self.stagedAppURL != newURL {
-                    self.stagedAppURL = newURL
-                }
-                self.isStagedBundleConsumed = false
-                if self.lastError != nil {
-                    self.lastError = nil
-                }
-            }
-        } catch {
-            DispatchQueue.main.async {
-                if self.lastError != error.localizedDescription {
-                    self.lastError = error.localizedDescription
-                }
-            }
+            self.storageSummary = census.summary
         }
     }
 
+    func loadStorageCensus() async -> StorageCensus {
+        let directory = effectiveStorageDirectory
+        let excludedPaths = staging.storageExclusions
+        return await StorageMaintenance.buildCensus(
+            for: directory,
+            excluding: excludedPaths
+        )
+    }
+
+    @discardableResult
+    func cleanUpStorage(_ items: [StorageItem]) async throws -> Int {
+        let removed = try await Task.detached(priority: .userInitiated) {
+            try StorageMaintenance.cleanUp(items)
+        }.value
+        refreshStorageSummary()
+        return removed
+    }
+
+    // MARK: - Bundle Staging
+
+    /// Starts a staging pass for the current draft.
+    func stageImmediately() {
+        staging.stage(draft: draft, directory: effectiveStorageDirectory)
+    }
+
+    /// Returns the current staged file and immediately begins preparing the
+    /// replacement. Returns `nil` while staging so the drag source cannot hand
+    /// an outdated artifact to the Dock.
     func consumeStagedBundleForDrag() -> URL? {
-        if stagedAppURL == nil || isStagedBundleConsumed || !FileManager.default.fileExists(atPath: stagedAppURL?.path ?? "") {
-            stageImmediately()
-        }
-        guard let urlToDrag = stagedAppURL else {
-            return nil
-        }
+        staging.consumeStagedBundleForDrag(
+            draft: draft,
+            directory: effectiveStorageDirectory
+        )
+    }
 
-        isStagedBundleConsumed = true
+    /// Called by the drag source when a session ends.
+    func handleDragEnded(operation: NSDragOperation) {
+        staging.handleDragEnded(operation: operation)
+    }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            self?.stageImmediately()
-        }
+    /// Keyboard-accessible fallback for users who cannot drag. Reveals the
+    /// prepared bundle so it can be dragged from Finder.
+    func revealStagedBundleInFinder() {
+        guard let url = stagedAppURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
 
-        return urlToDrag
+    func retryStaging() {
+        staging.retryStaging(draft: draft, directory: effectiveStorageDirectory)
+    }
+
+    func dismissStagingError() {
+        staging.dismissStagingError()
+    }
+
+    /// Test/support hook that waits until every staging pass (including
+    /// superseded passes that are cleaning up) has finished.
+    func awaitStagingCompletion(timeout: TimeInterval = 15) async {
+        await staging.awaitStagingCompletion(timeout: timeout)
     }
 
     // MARK: - Bundle Maintenance & Repair
 
     private func repairExistingDividerBundles() {
-        var directoriesToRepair: [URL] = [effectiveStorageDirectory]
-        let homeDir = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
-        let legacySandboxDir = homeDir
-            .appendingPathComponent("Library/Containers/me.bogle.DockDivider/Data/Library/Application Support/DockDividers", isDirectory: true)
-        if legacySandboxDir.path != effectiveStorageDirectory.path {
-            directoriesToRepair.append(legacySandboxDir)
-        }
-        BundleSynthesizer.repairExistingBundles(in: directoriesToRepair, excluding: stagedAppURL)
+        repairer.repairExistingBundles(
+            in: effectiveStorageDirectory,
+            excluding: staging.storageExclusionURL
+        )
     }
 }

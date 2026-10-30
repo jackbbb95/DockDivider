@@ -202,7 +202,7 @@ struct SFSymbolPickerPopover: View {
     @State private var searchText: String = ""
     @State private var selectedCategoryKey: String = "dock_curated"
 
-    private let catalog = SFSymbolCatalog.shared
+    private var catalog: SFSymbolCatalog { SFSymbolCatalog.shared }
     private let gridColumns = [GridItem(.adaptive(minimum: 38, maximum: 44), spacing: 6)]
 
     private var filteredSymbols: [String] {
@@ -218,6 +218,7 @@ struct SFSymbolPickerPopover: View {
                 TextField("Search \(catalog.allSymbols.count) macOS SF Symbols (e.g. code, folder, music)…", text: $searchText)
                     .textFieldStyle(.plain)
                     .font(.subheadline)
+                    .accessibilityLabel("Search SF Symbols")
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
@@ -226,6 +227,8 @@ struct SFSymbolPickerPopover: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .help("Clear search")
+                    .accessibilityLabel("Clear search")
                 }
             }
             .padding(.horizontal, 12)
@@ -258,6 +261,9 @@ struct SFSymbolPickerPopover: View {
                             .foregroundStyle(isSelected ? .white : .primary)
                         }
                         .buttonStyle(.plain)
+                        .help("Show \(category.label) symbols")
+                        .accessibilityLabel("\(category.label) symbols")
+                        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
                     }
                 }
                 .padding(.horizontal, 12)
@@ -301,6 +307,8 @@ struct SFSymbolPickerPopover: View {
                             }
                             .buttonStyle(.plain)
                             .help(symbol)
+                            .accessibilityLabel(symbol.replacingOccurrences(of: ".", with: " "))
+                            .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
                         }
                     }
                     .padding(12)

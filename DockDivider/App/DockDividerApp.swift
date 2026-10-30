@@ -12,11 +12,11 @@ struct DockDividerApp: App {
     @StateObject private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup {
+        Window("DockDivider", id: "main") {
             MainWindowView()
                 .environmentObject(appState)
         }
-        .defaultSize(width: 900, height: 600)
+        .defaultSize(width: 940, height: 700)
         .windowResizability(.contentSize)
     }
 }

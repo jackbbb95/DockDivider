@@ -17,17 +17,9 @@ struct StyleSelectorView: View {
             Text("Style")
                 .font(.headline)
 
-            Picker("Style", selection: Binding(
-                get: { style },
-                set: { newStyle in
-                    guard style != newStyle else { return }
-                    DispatchQueue.main.async {
-                        style = newStyle
-                    }
-                }
-            )) {
+            Picker("Style", selection: $style.deferred()) {
                 ForEach(DividerStyle.allCases) { item in
-                    Text(item.rawValue).tag(item)
+                    Text(item.displayName).tag(item)
                 }
             }
             .pickerStyle(.segmented)

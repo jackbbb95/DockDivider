@@ -67,11 +67,65 @@ nonisolated enum SystemActionType: String, CaseIterable, Identifiable, Codable, 
         case .openAirDrop: return "Open AirDrop"
         }
     }
+
+    /// One-line explanation shown under the system action picker.
+    nonisolated var detail: String {
+        switch self {
+        case .hideOthers: return "Hides every other app so the current app stays in front."
+        case .startScreensaver: return "Starts the screen saver or locks the screen, depending on your settings."
+        case .screenshot: return "Opens the macOS Screenshot utility."
+        case .openTrash: return "Opens your Trash in Finder."
+        case .emptyTrash: return "Permanently deletes everything in your Trash. This cannot be undone."
+        case .toggleDarkMode: return "Switches between Light and Dark appearance."
+        case .toggleMute: return "Mutes or unmutes the current output volume."
+        case .missionControl: return "Shows all open windows and Spaces."
+        case .launchpad: return "Opens Launchpad. Not available on every macOS release."
+        case .activityMonitor: return "Opens Activity Monitor."
+        case .colorMeter: return "Opens Digital Color Meter."
+        case .clearClipboard: return "Removes the current contents of the clipboard."
+        case .sleepDisplays: return "Puts the displays to sleep immediately."
+        case .openDownloads: return "Opens your Downloads folder in Finder."
+        case .openAirDrop: return "Opens AirDrop in Finder."
+        }
+    }
+
+    /// Actions that require an app which may be absent on newer macOS
+    /// releases. The editor hides these instead of offering a dead control.
+    nonisolated var isAvailable: Bool {
+        unavailableReason == nil
+    }
+
+    nonisolated var unavailableReason: String? {
+        switch self {
+        case .launchpad:
+            guard !Self.exists(Self.launchpadPath) else { return nil }
+            return "Launchpad is not included with this version of macOS."
+        case .openAirDrop:
+            guard !Self.exists(Self.airDropPath) else { return nil }
+            return "AirDrop is not available in Finder on this version of macOS."
+        default:
+            return nil
+        }
+    }
+
+    nonisolated static var availableCases: [SystemActionType] {
+        allCases.filter(\.isAvailable)
+    }
+
+    private nonisolated static func exists(_ path: String) -> Bool {
+        FileManager.default.fileExists(atPath: path)
+    }
+
+    nonisolated static let launchpadPath = "/System/Applications/Launchpad.app"
+    nonisolated static let airDropPath = "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app"
 }
 
 // MARK: - ActionConfig Model
 
 nonisolated struct ActionConfig: Codable, Equatable, Sendable {
+    nonisolated static let currentSchemaVersion = 1
+
+    var schemaVersion: Int = currentSchemaVersion
     var actionType: ActionType = .none
     var appBundleURLs: [String] = []
     var webURLs: [String] = []
@@ -83,6 +137,7 @@ nonisolated struct ActionConfig: Codable, Equatable, Sendable {
     nonisolated static let none = ActionConfig()
 
     enum CodingKeys: String, CodingKey {
+        case schemaVersion
         case actionType
         case appBundleURLs
         case webURLs
@@ -93,6 +148,7 @@ nonisolated struct ActionConfig: Codable, Equatable, Sendable {
     }
 
     nonisolated init(
+        schemaVersion: Int = ActionConfig.currentSchemaVersion,
         actionType: ActionType = .none,
         appBundleURLs: [String] = [],
         webURLs: [String] = [],
@@ -101,6 +157,7 @@ nonisolated struct ActionConfig: Codable, Equatable, Sendable {
         shellCommand: String = "",
         runInTerminal: Bool = false
     ) {
+        self.schemaVersion = schemaVersion
         self.actionType = actionType
         self.appBundleURLs = appBundleURLs
         self.webURLs = webURLs
@@ -112,6 +169,7 @@ nonisolated struct ActionConfig: Codable, Equatable, Sendable {
 
     nonisolated func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(actionType, forKey: .actionType)
         try container.encode(appBundleURLs, forKey: .appBundleURLs)
         try container.encode(webURLs, forKey: .webURLs)
@@ -123,6 +181,7 @@ nonisolated struct ActionConfig: Codable, Equatable, Sendable {
 
     nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? Self.currentSchemaVersion
         self.actionType = try container.decodeIfPresent(ActionType.self, forKey: .actionType) ?? .none
         self.appBundleURLs = try container.decodeIfPresent([String].self, forKey: .appBundleURLs) ?? []
         self.webURLs = try container.decodeIfPresent([String].self, forKey: .webURLs) ?? []

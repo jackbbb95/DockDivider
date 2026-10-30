@@ -4,153 +4,116 @@
 //
 //  Created by Jack Bogle on 10/27/26.
 //
-//  ActionType, SystemActionType, and ActionConfig in this file mirror
-//  DockDivider/Generator/ActionConfig.swift so divider_runner compiles
-//  as a standalone, zero-dependency Mach-O binary embedded inside each
-//  synthesized divider .app bundle.
+//  ActionType, SystemActionType, and ActionConfig come from the shared
+//  `Shared/ActionConfig.swift` source compiled into both DockDivider and
+//  divider_runner, so the generated helper and the editor can never drift.
 //
 
 import Foundation
 import AppKit
+import OSLog
 
-// MARK: - Action Models (Mirrored from ActionConfig.swift)
+/// Kept in sync with `BundleMarker.currentRunnerVersion`. The app uses the
+/// marker to decide whether an existing divider needs a runner upgrade.
+let runnerVersion = "2"
 
-enum ActionType: String, CaseIterable, Identifiable, Codable {
-    case none = "none"
-    case openAppsAndURLs = "openAppsAndURLs"
-    case systemAction = "systemAction"
-    case runShortcut = "runShortcut"
-    case shellCommand = "shellCommand"
+let logger = Logger(subsystem: "me.bogle.DockDivider.runner", category: "actions")
 
-    var id: String { rawValue }
+// MARK: - Launch Helpers
 
-    var displayName: String {
-        switch self {
-        case .none: return "Do Nothing (Silent)"
-        case .openAppsAndURLs: return "Launch Apps & URLs"
-        case .systemAction: return "System Utility Action"
-        case .runShortcut: return "Run Apple Shortcut"
-        case .shellCommand: return "Run Shell Command"
-        }
+/// Submits a launch request to LaunchServices and exits. The runner never
+/// waits for the target app or URL to finish opening.
+func openURL(_ url: URL) {
+    if !NSWorkspace.shared.open(url) {
+        logger.error("Unable to open \(url.absoluteString, privacy: .public)")
     }
 }
 
-enum SystemActionType: String, CaseIterable, Identifiable, Codable {
-    case hideOthers = "hideOthers"
-    case startScreensaver = "startScreensaver"
-    case screenshot = "screenshot"
-    case openTrash = "openTrash"
-    case emptyTrash = "emptyTrash"
-    case toggleDarkMode = "toggleDarkMode"
-    case toggleMute = "toggleMute"
-    case missionControl = "missionControl"
-    case launchpad = "launchpad"
-    case activityMonitor = "activityMonitor"
-    case colorMeter = "colorMeter"
-    case clearClipboard = "clearClipboard"
-    case sleepDisplays = "sleepDisplays"
-    case openDownloads = "openDownloads"
-    case openAirDrop = "openAirDrop"
+/// Starts a child process and deliberately does not wait for it. Long-running
+/// shell commands, Shortcuts, and utilities must not keep the helper alive.
+func launchDetached(_ executablePath: String, arguments: [String]) {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executablePath)
+    process.arguments = arguments
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
 
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .hideOthers: return "Hide All Other Apps"
-        case .startScreensaver: return "Start Screensaver / Lock"
-        case .screenshot: return "Open Screenshot Utility"
-        case .openTrash: return "Open Trash"
-        case .emptyTrash: return "Empty Trash"
-        case .toggleDarkMode: return "Toggle Dark Mode"
-        case .toggleMute: return "Toggle Mute Audio"
-        case .missionControl: return "Launch Mission Control"
-        case .launchpad: return "Launchpad"
-        case .activityMonitor: return "Activity Monitor"
-        case .colorMeter: return "Digital Color Meter"
-        case .clearClipboard: return "Clear Clipboard"
-        case .sleepDisplays: return "Sleep Displays"
-        case .openDownloads: return "Open Downloads"
-        case .openAirDrop: return "Open AirDrop"
-        }
-    }
-}
-
-struct ActionConfig: Codable, Equatable {
-    var actionType: ActionType = .none
-    var appBundleURLs: [String] = []
-    var webURLs: [String] = []
-    var systemAction: SystemActionType = .hideOthers
-    var shortcutName: String = ""
-    var shellCommand: String = ""
-    var runInTerminal: Bool = false
-
-    static let none = ActionConfig()
-
-    enum CodingKeys: String, CodingKey {
-        case actionType
-        case appBundleURLs
-        case webURLs
-        case systemAction
-        case shortcutName
-        case shellCommand
-        case runInTerminal
-    }
-
-    init(
-        actionType: ActionType = .none,
-        appBundleURLs: [String] = [],
-        webURLs: [String] = [],
-        systemAction: SystemActionType = .hideOthers,
-        shortcutName: String = "",
-        shellCommand: String = "",
-        runInTerminal: Bool = false
-    ) {
-        self.actionType = actionType
-        self.appBundleURLs = appBundleURLs
-        self.webURLs = webURLs
-        self.systemAction = systemAction
-        self.shortcutName = shortcutName
-        self.shellCommand = shellCommand
-        self.runInTerminal = runInTerminal
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.actionType = try container.decodeIfPresent(ActionType.self, forKey: .actionType) ?? .none
-        self.appBundleURLs = try container.decodeIfPresent([String].self, forKey: .appBundleURLs) ?? []
-        self.webURLs = try container.decodeIfPresent([String].self, forKey: .webURLs) ?? []
-        self.systemAction = try container.decodeIfPresent(SystemActionType.self, forKey: .systemAction) ?? .hideOthers
-        self.shortcutName = try container.decodeIfPresent(String.self, forKey: .shortcutName) ?? ""
-        self.shellCommand = try container.decodeIfPresent(String.self, forKey: .shellCommand) ?? ""
-        self.runInTerminal = try container.decodeIfPresent(Bool.self, forKey: .runInTerminal) ?? false
-    }
-}
-
-// MARK: - Helpers
-
-func openApplicationAndWait(at appURL: URL, in group: DispatchGroup) {
-    group.enter()
-    NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
-        group.leave()
+    do {
+        try process.run()
+    } catch {
+        logger.error("Unable to launch \(executablePath, privacy: .public): \(error.localizedDescription, privacy: .public)")
     }
 }
 
 func runAppleScript(_ lines: [String]) {
-    let scriptProcess = Process()
-    scriptProcess.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    var args: [String] = []
+    var arguments: [String] = []
     for line in lines {
-        args.append("-e")
-        args.append(line)
+        arguments.append("-e")
+        arguments.append(line)
     }
-    scriptProcess.arguments = args
-    scriptProcess.standardOutput = Pipe()
-    scriptProcess.standardError = Pipe()
-    try? scriptProcess.run()
-    scriptProcess.waitUntilExit()
+    launchDetached("/usr/bin/osascript", arguments: arguments)
+}
+
+func resolvedURL(forPathOrURL value: String) -> URL? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    if trimmed.hasPrefix("file://"), let parsed = URL(string: trimmed) {
+        return parsed
+    }
+    if let parsed = URL(string: trimmed), parsed.scheme != nil {
+        return parsed
+    }
+    return URL(fileURLWithPath: trimmed)
+}
+
+func emptyHomeTrash() {
+    let trashURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".Trash", isDirectory: true)
+
+    guard let items = try? FileManager.default.contentsOfDirectory(
+        at: trashURL,
+        includingPropertiesForKeys: nil
+    ) else {
+        logger.error("Unable to list the Trash.")
+        return
+    }
+
+    for item in items {
+        do {
+            try FileManager.default.removeItem(at: item)
+        } catch {
+            logger.error("Unable to remove \(item.lastPathComponent, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+}
+
+func confirmEmptyTrash() -> Bool {
+    let application = NSApplication.shared
+    application.setActivationPolicy(.accessory)
+    if #available(macOS 14.0, *) {
+        application.activate()
+    } else {
+        application.activate(ignoringOtherApps: true)
+    }
+
+    let alert = NSAlert()
+    alert.messageText = "Empty the Trash?"
+    alert.informativeText = "This permanently deletes everything in the Trash. This cannot be undone."
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "Empty Trash")
+    alert.addButton(withTitle: "Cancel")
+    return alert.runModal() == .alertFirstButtonReturn
 }
 
 // MARK: - Main Execution
+
+// `--version` is used by the app and by tests. Keep the output stable.
+if CommandLine.arguments.contains("--version") {
+    print("divider_runner \(runnerVersion)")
+    exit(0)
+}
 
 // 1. Locate own bundle Resources/ActionConfig.json
 guard let execURL = Bundle.main.executableURL else { exit(0) }
@@ -159,10 +122,11 @@ let configURL = bundleURL.appendingPathComponent("Resources/ActionConfig.json")
 
 guard let data = try? Data(contentsOf: configURL),
       let config = try? JSONDecoder().decode(ActionConfig.self, from: data) else {
+    logger.error("Missing or unreadable ActionConfig.json")
     exit(0)
 }
 
-let group = DispatchGroup()
+logger.info("Executing action \(config.actionType.rawValue, privacy: .public)")
 
 // 2. Execute configured action
 switch config.actionType {
@@ -171,26 +135,16 @@ case .none:
 
 case .openAppsAndURLs:
     for pathOrURL in config.appBundleURLs {
-        let trimmed = pathOrURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { continue }
-        let url: URL
-        if trimmed.hasPrefix("file://"), let parsed = URL(string: trimmed) {
-            url = parsed
-        } else if let parsed = URL(string: trimmed), parsed.scheme != nil {
-            url = parsed
-        } else {
-            url = URL(fileURLWithPath: trimmed)
-        }
-
-        openApplicationAndWait(at: url, in: group)
+        guard let url = resolvedURL(forPathOrURL: pathOrURL) else { continue }
+        openURL(url)
     }
 
     for rawURL in config.webURLs {
         let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { continue }
-        let urlStr = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
-        if let url = URL(string: urlStr) {
-            NSWorkspace.shared.open(url)
+        let urlString = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        if let url = URL(string: urlString) {
+            openURL(url)
         }
     }
 
@@ -200,27 +154,18 @@ case .systemAction:
         NSWorkspace.shared.hideOtherApplications()
 
     case .startScreensaver:
-        let url = URL(fileURLWithPath: "/System/Library/CoreServices/ScreenSaverEngine.app")
-        openApplicationAndWait(at: url, in: group)
+        openURL(URL(fileURLWithPath: "/System/Library/CoreServices/ScreenSaverEngine.app"))
 
     case .screenshot:
-        let url = URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app")
-        openApplicationAndWait(at: url, in: group)
+        openURL(URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app"))
 
     case .openTrash:
-        runAppleScript([
-            "tell application \"Finder\"",
-            "open trash",
-            "activate",
-            "end tell"
-        ])
+        openURL(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash"))
 
     case .emptyTrash:
-        runAppleScript([
-            "tell application \"Finder\"",
-            "empty trash",
-            "end tell"
-        ])
+        if confirmEmptyTrash() {
+            emptyHomeTrash()
+        }
 
     case .toggleDarkMode:
         runAppleScript([
@@ -237,123 +182,101 @@ case .systemAction:
         ])
 
     case .missionControl:
-        let url = URL(fileURLWithPath: "/System/Applications/Mission Control.app")
-        openApplicationAndWait(at: url, in: group)
+        openURL(URL(fileURLWithPath: "/System/Applications/Mission Control.app"))
 
     case .launchpad:
-        let url = URL(fileURLWithPath: "/System/Applications/Launchpad.app")
-        openApplicationAndWait(at: url, in: group)
+        let launchpadURL = URL(fileURLWithPath: "/System/Applications/Launchpad.app")
+        if FileManager.default.fileExists(atPath: launchpadURL.path) {
+            openURL(launchpadURL)
+        } else {
+            logger.error("Launchpad is not available on this version of macOS.")
+        }
 
     case .activityMonitor:
-        let url = URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app")
-        openApplicationAndWait(at: url, in: group)
+        openURL(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
 
     case .colorMeter:
-        let url = URL(fileURLWithPath: "/System/Applications/Utilities/Digital Color Meter.app")
-        openApplicationAndWait(at: url, in: group)
+        openURL(URL(fileURLWithPath: "/System/Applications/Utilities/Digital Color Meter.app"))
 
     case .clearClipboard:
         NSPasteboard.general.clearContents()
 
     case .sleepDisplays:
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
-        process.arguments = ["displaysleepnow"]
-        try? process.run()
-        process.waitUntilExit()
+        launchDetached("/usr/bin/pmset", arguments: ["displaysleepnow"])
 
     case .openDownloads:
         if let downloadsURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-            NSWorkspace.shared.open(downloadsURL)
+            openURL(downloadsURL)
         }
 
     case .openAirDrop:
-        let airdropAppURL = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app")
-        if FileManager.default.fileExists(atPath: airdropAppURL.path) {
-            openApplicationAndWait(at: airdropAppURL, in: group)
+        let airdropURL = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app")
+        if FileManager.default.fileExists(atPath: airdropURL.path) {
+            openURL(airdropURL)
         } else {
-            runAppleScript([
-                "tell application \"Finder\"",
-                "activate",
-                "tell application \"System Events\" to keystroke \"R\" using {command down, shift down}",
-                "end tell"
-            ])
+            logger.error("AirDrop is not available in Finder on this version of macOS.")
         }
     }
 
 case .runShortcut:
     let trimmed = config.shortcutName.trimmingCharacters(in: .whitespacesAndNewlines)
-    if !trimmed.isEmpty {
-        let shortcutsCLI = "/usr/bin/shortcuts"
-        if FileManager.default.isExecutableFile(atPath: shortcutsCLI) {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: shortcutsCLI)
-            process.arguments = ["run", trimmed]
-            process.standardOutput = Pipe()
-            process.standardError = Pipe()
-            try? process.run()
-            process.waitUntilExit()
-        } else if let encodedName = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-                  let url = URL(string: "shortcuts://run-shortcut?name=\(encodedName)") {
-            NSWorkspace.shared.open(url)
-        }
+    guard !trimmed.isEmpty else { break }
+
+    let shortcutsCLI = "/usr/bin/shortcuts"
+    if FileManager.default.isExecutableFile(atPath: shortcutsCLI) {
+        launchDetached(shortcutsCLI, arguments: ["run", trimmed])
+    } else if let encodedName = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "shortcuts://run-shortcut?name=\(encodedName)") {
+        openURL(url)
     }
 
 case .shellCommand:
-    let cmd = config.shellCommand.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !cmd.isEmpty else { break }
+    let command = config.shellCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !command.isEmpty else { break }
 
     if config.runInTerminal {
-        // Create a temporary executable .command script
-        let tempDir = FileManager.default.temporaryDirectory
-        let scriptFileName = "dockdivider-\(UUID().uuidString.prefix(8)).command"
-        let scriptURL = tempDir.appendingPathComponent(scriptFileName)
+        let tempDirectory = FileManager.default.temporaryDirectory
+        let scriptURL = tempDirectory.appendingPathComponent(
+            "dockdivider-\(UUID().uuidString.prefix(8)).command"
+        )
 
+        // The script removes itself before running the user's command so
+        // temporary launchers never accumulate in /tmp.
         let scriptContent = """
         #!/bin/zsh
-        \(cmd)
+        rm -f -- "$0"
+        \(command)
         exec zsh
         """
 
-        if (try? scriptContent.write(to: scriptURL, atomically: true, encoding: .utf8)) != nil {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+        guard (try? scriptContent.write(to: scriptURL, atomically: true, encoding: .utf8)) != nil else {
+            logger.error("Unable to write the temporary terminal script.")
+            break
+        }
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: scriptURL.path
+        )
 
-            // Resolve user's default terminal:
-            // 1. Check LaunchServices for default handler of .command files
-            // 2. If Ghostty is installed, prioritize it as the default modern terminal
-            let targetTerminalURL: URL? = {
-                if let defaultAppURL = NSWorkspace.shared.urlForApplication(toOpen: scriptURL) {
-                    return defaultAppURL
-                }
-                if let ghosttyURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.mitchellh.ghostty") {
-                    return ghosttyURL
-                }
-                if FileManager.default.fileExists(atPath: "/Applications/Ghostty.app") {
-                    return URL(fileURLWithPath: "/Applications/Ghostty.app")
-                }
-                return URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
-            }()
+        let defaultHandler = NSWorkspace.shared.urlForApplication(toOpen: scriptURL)
+        let terminalURL = defaultHandler ?? URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app")
 
-            group.enter()
-            if let appURL = targetTerminalURL {
-                NSWorkspace.shared.open([scriptURL], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration()) { _, _ in
-                    group.leave()
-                }
-            } else {
-                NSWorkspace.shared.open(scriptURL)
-                DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) {
-                    group.leave()
+        if FileManager.default.fileExists(atPath: terminalURL.path) {
+            NSWorkspace.shared.open(
+                [scriptURL],
+                withApplicationAt: terminalURL,
+                configuration: NSWorkspace.OpenConfiguration()
+            ) { _, error in
+                if let error {
+                    logger.error("Unable to open the terminal: \(error.localizedDescription, privacy: .public)")
                 }
             }
+        } else {
+            openURL(scriptURL)
         }
     } else {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-c", cmd]
-        try? process.run()
-        process.waitUntilExit()
+        launchDetached("/bin/zsh", arguments: ["-c", command])
     }
 }
 
-_ = group.wait(timeout: .now() + 3.0)
 exit(0)

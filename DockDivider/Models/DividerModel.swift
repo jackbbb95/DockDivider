@@ -6,54 +6,108 @@
 //
 
 import Foundation
-import SwiftUI
-import AppKit
 
 // MARK: - Supporting Enums
 
 nonisolated enum DividerStyle: String, CaseIterable, Identifiable, Codable, Sendable {
-    case line = "Line"
-    case dashed = "Dashed"
-    case dot = "Dot"
-    case label = "Label"
-    case spacer = "Spacer"
-    case image = "Image"
+    case line = "line"
+    case dashed = "dashed"
+    case dot = "dot"
+    case label = "label"
+    case spacer = "spacer"
+    case image = "image"
 
     var id: String { rawValue }
-}
 
-nonisolated enum LabelMode: String, CaseIterable, Identifiable, Codable, Sendable {
-    case text = "Text"
-    case symbol = "SF Symbol"
-
-    var id: String { rawValue }
-}
-
-nonisolated enum ColorPreset: String, CaseIterable, Identifiable, Codable, Sendable {
-    case adaptiveWhite = "Light"
-    case dark = "Dark"
-    case custom = "Custom"
-
-    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .line: return "Line"
+        case .dashed: return "Dashed"
+        case .dot: return "Dot"
+        case .label: return "Label"
+        case .spacer: return "Spacer"
+        case .image: return "Image"
+        }
+    }
 
     nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
-        if raw == "White" || raw == "Light" {
-            self = .adaptiveWhite
-        } else if let value = ColorPreset(rawValue: raw) {
-            self = value
-        } else {
-            self = .adaptiveWhite
+        switch raw.lowercased() {
+        case "line": self = .line
+        case "dashed": self = .dashed
+        case "dot": self = .dot
+        case "label": self = .label
+        case "spacer": self = .spacer
+        case "image": self = .image
+        default: self = .line
+        }
+    }
+}
+
+nonisolated enum LabelMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case text = "text"
+    case symbol = "symbol"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .text: return "Text"
+        case .symbol: return "SF Symbol"
+        }
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw.lowercased() {
+        case "text": self = .text
+        case "symbol", "sf symbol": self = .symbol
+        default: self = .text
+        }
+    }
+}
+
+nonisolated enum ColorPreset: String, CaseIterable, Identifiable, Codable, Sendable {
+    case adaptiveWhite = "adaptiveWhite"
+    case dark = "dark"
+    case custom = "custom"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .adaptiveWhite: return "Light"
+        case .dark: return "Dark"
+        case .custom: return "Custom"
+        }
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw.lowercased() {
+        case "white", "light", "adaptivewhite": self = .adaptiveWhite
+        case "dark": self = .dark
+        case "custom": self = .custom
+        default: self = .adaptiveWhite
         }
     }
 }
 
 nonisolated enum DividerOrientation: String, CaseIterable, Identifiable, Codable, Sendable {
-    case vertical = "Vertical"
-    case horizontal = "Horizontal"
+    case vertical = "vertical"
+    case horizontal = "horizontal"
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .vertical: return "Vertical"
+        case .horizontal: return "Horizontal"
+        }
+    }
 
     nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
@@ -78,11 +132,30 @@ nonisolated enum DividerOrientation: String, CaseIterable, Identifiable, Codable
 }
 
 nonisolated enum SpacerSize: String, CaseIterable, Identifiable, Codable, Sendable {
-    case regular = "Full"
-    case small = "Half"
-    case flex = "Flexible"
+    case regular = "regular"
+    case small = "small"
+    case flex = "flex"
 
     var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .regular: return "Full"
+        case .small: return "Half"
+        case .flex: return "Flexible"
+        }
+    }
+
+    nonisolated init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        switch raw.lowercased() {
+        case "regular", "full": self = .regular
+        case "small", "half": self = .small
+        case "flex", "flexible": self = .flex
+        default: self = .regular
+        }
+    }
 
     var fileExtension: String {
         switch self {
@@ -97,8 +170,14 @@ nonisolated enum SpacerSize: String, CaseIterable, Identifiable, Codable, Sendab
 
 nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
     var id: UUID = UUID()
-    var style: DividerStyle = .line
-    var orientation: DividerOrientation = DividerOrientation.currentSystemDockOrientation
+    var style: DividerStyle = .line {
+        didSet {
+            if style != .image && heightRatio > 1.0 {
+                heightRatio = 1.0
+            }
+        }
+    }
+    var orientation: DividerOrientation = .vertical
     var spacerSize: SpacerSize = .regular
     var colorPreset: ColorPreset = .adaptiveWhite
     var customRed: Double = 1.0
@@ -114,6 +193,7 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
     var isVerticalText: Bool = false
     var symbolName: String = "star.fill"
     var imageData: Data? = nil
+    var imageID: UUID? = nil
     var roundImageCorners: Bool = true
     var imageCornerRadiusRatio: Double = 0.225
     var actionConfig: ActionConfig = ActionConfig.none
@@ -139,6 +219,17 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
     /// which requires synthesizing a full-width `.app` bundle instead of a native `.dockspace` tile.
     var requiresAppBundleForSpacer: Bool {
         !hoverLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || actionConfig.actionType != .none
+    }
+
+    /// Copy that is safe to embed in a generated bundle.
+    ///
+    /// Custom artwork is written once as `Resources/CustomImage.png`; embedding
+    /// the same bytes again inside `DividerModel.json` would roughly double the
+    /// bundle size.
+    nonisolated func withoutEmbeddedImageData() -> DividerModel {
+        var copy = self
+        copy.imageData = nil
+        return copy
     }
 
     // MARK: - Mutating Methods
@@ -178,6 +269,7 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
         case isVerticalText
         case symbolName
         case imageData
+        case imageID
         case roundImageCorners
         case imageCornerRadiusRatio
         case actionConfig
@@ -186,7 +278,7 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
     nonisolated init(
         id: UUID = UUID(),
         style: DividerStyle = .line,
-        orientation: DividerOrientation = DividerOrientation.currentSystemDockOrientation,
+        orientation: DividerOrientation = .vertical,
         spacerSize: SpacerSize = .regular,
         colorPreset: ColorPreset = .adaptiveWhite,
         customRed: Double = 1.0,
@@ -202,6 +294,7 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
         isVerticalText: Bool = false,
         symbolName: String = "star.fill",
         imageData: Data? = nil,
+        imageID: UUID? = nil,
         roundImageCorners: Bool = true,
         imageCornerRadiusRatio: Double = 0.225,
         actionConfig: ActionConfig = ActionConfig.none
@@ -224,6 +317,7 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
         self.isVerticalText = isVerticalText
         self.symbolName = symbolName
         self.imageData = imageData
+        self.imageID = imageID
         self.roundImageCorners = roundImageCorners
         self.imageCornerRadiusRatio = imageCornerRadiusRatio
         self.actionConfig = actionConfig
@@ -253,6 +347,7 @@ extension DividerModel {
         try container.encode(isVerticalText, forKey: .isVerticalText)
         try container.encode(symbolName, forKey: .symbolName)
         try container.encodeIfPresent(imageData, forKey: .imageData)
+        try container.encodeIfPresent(imageID, forKey: .imageID)
         try container.encode(roundImageCorners, forKey: .roundImageCorners)
         try container.encode(imageCornerRadiusRatio, forKey: .imageCornerRadiusRatio)
         try container.encode(actionConfig, forKey: .actionConfig)
@@ -262,7 +357,7 @@ extension DividerModel {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         self.style = try container.decodeIfPresent(DividerStyle.self, forKey: .style) ?? .line
-        self.orientation = try container.decodeIfPresent(DividerOrientation.self, forKey: .orientation) ?? DividerOrientation.currentSystemDockOrientation
+        self.orientation = try container.decodeIfPresent(DividerOrientation.self, forKey: .orientation) ?? .vertical
         self.spacerSize = try container.decodeIfPresent(SpacerSize.self, forKey: .spacerSize) ?? .regular
         self.colorPreset = try container.decodeIfPresent(ColorPreset.self, forKey: .colorPreset) ?? .adaptiveWhite
         self.customRed = try container.decodeIfPresent(Double.self, forKey: .customRed) ?? 1.0
@@ -278,45 +373,12 @@ extension DividerModel {
         self.isVerticalText = try container.decodeIfPresent(Bool.self, forKey: .isVerticalText) ?? false
         self.symbolName = try container.decodeIfPresent(String.self, forKey: .symbolName) ?? "star.fill"
         self.imageData = try container.decodeIfPresent(Data.self, forKey: .imageData)
+        self.imageID = try container.decodeIfPresent(UUID.self, forKey: .imageID)
+        if self.imageID == nil, self.imageData != nil {
+            self.imageID = UUID()
+        }
         self.roundImageCorners = try container.decodeIfPresent(Bool.self, forKey: .roundImageCorners) ?? true
         self.imageCornerRadiusRatio = try container.decodeIfPresent(Double.self, forKey: .imageCornerRadiusRatio) ?? 0.225
         self.actionConfig = try container.decodeIfPresent(ActionConfig.self, forKey: .actionConfig) ?? ActionConfig.none
-    }
-}
-
-// MARK: - UI & AppKit Integration
-
-extension DividerModel {
-    @MainActor
-    var effectiveColor: Color {
-        switch colorPreset {
-        case .adaptiveWhite:
-            return Color.white
-        case .dark:
-            return Color(white: 0.15)
-        case .custom:
-            return Color(.sRGB, red: customRed, green: customGreen, blue: customBlue, opacity: 1.0)
-        }
-    }
-
-    @MainActor
-    var effectiveNSColor: NSColor {
-        switch colorPreset {
-        case .adaptiveWhite:
-            return NSColor.white
-        case .dark:
-            return NSColor(white: 0.15, alpha: 1.0)
-        case .custom:
-            return NSColor(srgbRed: CGFloat(customRed), green: CGFloat(customGreen), blue: CGFloat(customBlue), alpha: 1.0)
-        }
-    }
-
-    @MainActor
-    mutating func updateCustomColor(from newColor: Color) {
-        let nsColor = NSColor(newColor)
-        guard let srgbColor = nsColor.usingColorSpace(.sRGB) else { return }
-        customRed = Double(srgbColor.redComponent)
-        customGreen = Double(srgbColor.greenComponent)
-        customBlue = Double(srgbColor.blueComponent)
     }
 }

@@ -6,9 +6,11 @@
 //
 
 import SwiftUI
+import Foundation
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
+    @State private var showingStorageCleanup = false
 
     // MARK: - Body
 
@@ -49,7 +51,7 @@ struct MainWindowView: View {
                         .padding(.horizontal, 4)
                         .padding(.bottom, 8)
                     }
-                    .scrollIndicators(.hidden)
+                    .scrollIndicators(.automatic)
                 }
                 .frame(width: 440)
 
@@ -70,7 +72,11 @@ struct MainWindowView: View {
             storageLocationBar
         }
         .padding(18)
-        .frame(minWidth: 880, idealWidth: 900, maxWidth: .infinity, minHeight: 560, idealHeight: 600, maxHeight: .infinity)
+        .frame(minWidth: 920, idealWidth: 940, maxWidth: .infinity, minHeight: 620, idealHeight: 700, maxHeight: .infinity)
+        .sheet(isPresented: $showingStorageCleanup) {
+            StorageCleanupView()
+                .environmentObject(appState)
+        }
     }
 
     // MARK: - Storage Footer Bar
@@ -80,6 +86,7 @@ struct MainWindowView: View {
             Image(systemName: "folder")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
             Text(appState.storageDisplayPath)
                 .font(.caption2)
@@ -88,13 +95,49 @@ struct MainWindowView: View {
                 .truncationMode(.middle)
                 .help("Folder where generated Dock Divider .app bundles are stored: \(appState.storageDisplayPath)")
 
+            Text(appState.isUsingDefaultStorageLocation ? "Default" : "Custom")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule().fill(Color.secondary.opacity(0.12))
+                )
+                .accessibilityLabel(appState.isUsingDefaultStorageLocation ? "Default storage location" : "Custom storage location")
+
+            if let warning = appState.storageLocationWarning {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .help(warning)
+                    .accessibilityLabel(warning)
+            }
+
+            if let summary = appState.storageSummary {
+                Text(storageSummaryText(summary))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .help("Generated dividers in this folder and their total disk usage")
+            }
+
             Spacer()
 
-            Button("Change...") {
+            Button("Clean Up…") {
+                showingStorageCleanup = true
+            }
+            .buttonStyle(.link)
+            .font(.caption2)
+            .help("Review generated dividers that are no longer referenced by your Dock")
+            .accessibilityLabel("Clean up unused dividers")
+
+            Button("Change…") {
                 appState.selectStorageDirectory()
             }
             .buttonStyle(.link)
             .font(.caption2)
+            .help("Choose a different folder for generated dividers")
+            .accessibilityLabel("Change storage folder")
 
             if appState.customStorageURL != nil {
                 Button("Reset") {
@@ -102,6 +145,8 @@ struct MainWindowView: View {
                 }
                 .buttonStyle(.link)
                 .font(.caption2)
+                .help("Return to the default storage folder")
+                .accessibilityLabel("Reset storage folder")
             }
 
             Button {
@@ -113,6 +158,7 @@ struct MainWindowView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help("Reveal Divider Storage Folder in Finder")
+            .accessibilityLabel("Reveal storage folder in Finder")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -120,5 +166,13 @@ struct MainWindowView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         )
+    }
+
+    private func storageSummaryText(_ summary: StorageSummary) -> String {
+        let size = ByteCountFormatter.string(fromByteCount: summary.totalBytes, countStyle: .file)
+        if summary.liveSetAvailable, summary.unusedCount > 0 {
+            return "\(summary.itemCount) items · \(size) · \(summary.unusedCount) unused"
+        }
+        return "\(summary.itemCount) items · \(size)"
     }
 }

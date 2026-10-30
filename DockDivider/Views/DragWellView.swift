@@ -83,23 +83,46 @@ struct DragWellView: View {
                             Text("Drag Me to Dock")
                                 .font(.headline)
 
-                            if appState.isStaging {
+                            switch appState.stagingState {
+                            case .preparing:
                                 HStack(spacing: 4) {
                                     ProgressView()
                                         .controlSize(.mini)
-                                    Text("Preparing...")
+                                    Text("Preparing…")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
-                            } else if appState.stagedAppURL != nil && !appState.isStaging {
+                            case .ready:
+                                if appState.validationWarning == nil {
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(Color.green)
+                                            .frame(width: 6, height: 6)
+                                        Text("Ready")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                } else {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.orange)
+                                        Text("Needs Setup")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            case .failed:
                                 HStack(spacing: 4) {
-                                    Circle()
-                                        .fill(Color.green)
-                                        .frame(width: 6, height: 6)
-                                    Text("Ready")
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                    Text("Needs Attention")
                                         .font(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
+                            case .idle:
+                                EmptyView()
                             }
                         }
 
@@ -110,9 +133,21 @@ struct DragWellView: View {
 
                     Spacer()
 
+                    Button {
+                        appState.revealStagedBundleInFinder()
+                    } label: {
+                        Image(systemName: "folder")
+                            .font(.title3)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(appState.stagedAppURL == nil)
+                    .help("Reveal the prepared divider in Finder")
+                    .accessibilityLabel("Reveal prepared divider in Finder")
+
                     Image(systemName: "hand.draw")
                         .font(.title2)
                         .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 14)
@@ -121,37 +156,63 @@ struct DragWellView: View {
             .overlay(
                 TransparentFileDragSource(
                     model: model,
+                    canStartDrag: { appState.isReadyForDrag },
                     onHoverChange: { hovering in
-                        if isHovering != hovering {
-                            DispatchQueue.main.async {
-                                isHovering = hovering
-                            }
-                        }
+                        isHovering = hovering
                     },
                     provideFileURL: {
                         appState.consumeStagedBundleForDrag()
+                    },
+                    onDragEnded: { operation in
+                        appState.handleDragEnded(operation: operation)
+                    },
+                    onAccessibilityPress: {
+                        appState.revealStagedBundleInFinder()
                     }
                 )
             )
 
-            // Error Banner (bound directly to appState.lastError)
-            if let errorText = appState.lastError {
-                HStack(spacing: 6) {
+            // Error Banner
+            if let error = appState.stagingError {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.red)
-                    Text(errorText)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(2)
-                    Spacer()
+                        .padding(.top, 1)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(error.localizedDescription)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+
+                        if let suggestion = error.recoverySuggestion {
+                            Text(suggestion)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if error.allowsRetry {
+                        Button("Retry") {
+                            appState.retryStaging()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+
                     Button {
-                        appState.lastError = nil
+                        appState.dismissStagingError()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .help("Dismiss this error")
+                    .accessibilityLabel("Dismiss error")
                 }
                 .padding(8)
                 .background(
@@ -160,6 +221,32 @@ struct DragWellView: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Color.red.opacity(0.25), lineWidth: 1)
+                        )
+                )
+            }
+
+            // Configuration warning: the divider is staged, but it would do
+            // nothing when clicked or has no image to draw.
+            if appState.stagingError == nil, let warning = appState.validationWarning {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .padding(.top, 1)
+
+                    Text(warning)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(8)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.orange.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.orange.opacity(0.25), lineWidth: 1)
                         )
                 )
             }
@@ -175,21 +262,35 @@ struct DragWellView: View {
 
 private struct TransparentFileDragSource: NSViewRepresentable {
     let model: DividerModel
+    let canStartDrag: () -> Bool
     let onHoverChange: (Bool) -> Void
     let provideFileURL: () -> URL?
+    let onDragEnded: (NSDragOperation) -> Void
+    let onAccessibilityPress: () -> Void
 
     func makeNSView(context: Context) -> DragSourceNSView {
         let view = DragSourceNSView()
         view.model = model
+        view.canStartDrag = canStartDrag
         view.onHoverChange = onHoverChange
         view.provideFileURL = provideFileURL
+        view.onDragEnded = onDragEnded
+        view.onAccessibilityPress = onAccessibilityPress
+        view.setAccessibilityElement(true)
+        view.setAccessibilityRole(.button)
+        view.setAccessibilityLabel("Divider drag well")
+        view.setAccessibilityHelp("Drag the prepared divider to the Dock, or press to reveal it in Finder.")
+        view.setAccessibilityIdentifier("dragWell")
         return view
     }
 
     func updateNSView(_ nsView: DragSourceNSView, context: Context) {
         nsView.model = model
+        nsView.canStartDrag = canStartDrag
         nsView.onHoverChange = onHoverChange
         nsView.provideFileURL = provideFileURL
+        nsView.onDragEnded = onDragEnded
+        nsView.onAccessibilityPress = onAccessibilityPress
     }
 }
 
@@ -197,8 +298,11 @@ private struct TransparentFileDragSource: NSViewRepresentable {
 
 final class DragSourceNSView: NSView, NSDraggingSource {
     var model: DividerModel = DividerModel()
+    var canStartDrag: (() -> Bool)?
     var onHoverChange: ((Bool) -> Void)?
     var provideFileURL: (() -> URL?)?
+    var onDragEnded: ((NSDragOperation) -> Void)?
+    var onAccessibilityPress: (() -> Void)?
 
     private var mouseDownEvent: NSEvent?
     private var didStartDrag: Bool = false
@@ -242,6 +346,12 @@ final class DragSourceNSView: NSView, NSDraggingSource {
         NSCursor.openHand.set()
     }
 
+    override func accessibilityPerformPress() -> Bool {
+        guard let onAccessibilityPress else { return false }
+        onAccessibilityPress()
+        return true
+    }
+
     override func mouseDragged(with event: NSEvent) {
         guard !didStartDrag, let startEvent = mouseDownEvent else { return }
         let dx = event.locationInWindow.x - startEvent.locationInWindow.x
@@ -249,7 +359,16 @@ final class DragSourceNSView: NSView, NSDraggingSource {
         guard hypot(dx, dy) >= 3.0 else { return }
 
         didStartDrag = true
-        guard let fileURL = provideFileURL?() else { return }
+
+        guard canStartDrag?() ?? true else {
+            NSCursor.operationNotAllowed.set()
+            return
+        }
+
+        guard let fileURL = provideFileURL?() else {
+            NSCursor.operationNotAllowed.set()
+            return
+        }
 
         let dragSize = CGSize(width: 64, height: 64)
         let dragImage = IconRenderer.renderNSImage(for: model, size: dragSize)
@@ -277,5 +396,6 @@ final class DragSourceNSView: NSView, NSDraggingSource {
         mouseDownEvent = nil
         didStartDrag = false
         NSCursor.arrow.set()
+        onDragEnded?(operation)
     }
 }

@@ -12,6 +12,7 @@ DerivedData/
 *.ipa
 *.dSYM.zip
 *.dSYM
+*.profraw
 
 ## Built binaries and application bundles
 *.app
