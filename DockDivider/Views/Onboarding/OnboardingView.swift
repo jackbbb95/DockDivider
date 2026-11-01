@@ -17,7 +17,6 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 20) {
             header
             steps
-            presetSection
 
             Divider()
 
@@ -78,31 +77,6 @@ struct OnboardingView: View {
                 title: "Remove it whenever you like",
                 message: "Right-click the divider in the Dock, then choose Options > Remove from Dock. Clean Up… reviews leftovers."
             )
-        }
-    }
-
-    // MARK: - Presets
-
-    private var presetSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Start with a preset")
-                .font(.callout.weight(.semibold))
-
-            HStack(spacing: 8) {
-                ForEach(DividerPreset.allCases) { preset in
-                    Button {
-                        var draft = appState.draft
-                        preset.apply(to: &draft)
-                        appState.draft = draft
-                    } label: {
-                        Label(preset.title, systemImage: preset.systemImage)
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .help("Use the \(preset.title.lowercased()) style")
-                }
-            }
         }
     }
 }

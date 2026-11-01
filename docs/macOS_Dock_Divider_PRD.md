@@ -82,7 +82,7 @@ Divider-<UUID8>.app/
 ## 4. User Experience & Functional Requirements
 
 ### 4.1 Core User Flow
-1. **Launch App:** User opens the utility. A single-window native macOS interface appears (~900x600 pt), restoring the last design from `Draft.json`. On a fresh install, a one-time welcome sheet explains the drag-to-Dock workflow and offers Line, Dashed, Dot, Label, and Spacer presets; dismissing it marks onboarding complete in `UserDefaults`.
+1. **Launch App:** User opens the utility. A single-window native macOS interface appears (~900x600 pt), restoring the last design from `Draft.json`. On a fresh install, a one-time welcome sheet explains the drag-to-Dock workflow; dismissing it marks onboarding complete in `UserDefaults`.
 2. **Choose Style:** User selects between **Vertical Line**, **Dot / Pill**, **Custom Label (Text / SF Symbol)**, **Blank Spacer**, or **Custom Image**.
 3. **Customize Appearance:** User tweaks thickness, height/scale, vertical offset, color/opacity, or hover tooltip and sees a real-time preview inside a simulated macOS Dock bar at the top of the window.
 4. **Assign Click Action (Optional):** User leaves "When Clicked" on *Do Nothing (Silent)*, or selects a smart action (e.g., *Open Apps/URLs*, *System Utility Action*, *Run Apple Shortcut*, or *Run Terminal Command*).
