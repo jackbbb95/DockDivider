@@ -29,6 +29,30 @@ nonisolated struct AppEnvironment {
     /// Whether a fresh install may show the welcome sheet. Tests disable it so
     /// a sheet never interferes with window-level assertions.
     var showsOnboarding: Bool = true
+    /// Presents the storage-move warning. Tests inject a recorder instead of
+    /// putting a modal NSAlert on screen.
+    var presentStorageMoveAlert: @MainActor (_ oldDirectory: URL, _ itemCount: Int) -> Void = AppEnvironment.defaultStorageMoveAlert
+    /// Reveals files in Finder. Tests inject a recorder so they never open
+    /// Finder windows.
+    var revealInFinder: @MainActor (_ urls: [URL]) -> Void = { urls in
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    @MainActor
+    static func defaultStorageMoveAlert(_ oldDirectory: URL, _ itemCount: Int) {
+        let alert = NSAlert()
+        alert.messageText = "Your existing Dock icons stay in the old folder"
+        alert.informativeText = """
+        \(itemCount) divider\(itemCount == 1 ? "" : "s") currently in your Dock still \
+        point\(itemCount == 1 ? "s" : "") to:
+        \(oldDirectory.path)
+
+        They keep working. Clean Up only reviews the new folder, so remove those \
+        icons from the Dock before deleting the old folder.
+        """
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 
     static var live: AppEnvironment {
         AppEnvironment(
@@ -269,27 +293,12 @@ final class AppState: ObservableObject {
                 livePaths: livePaths
             )
             if liveCount > 0 {
-                presentStorageMovedAlert(oldDirectory: previous, itemCount: liveCount)
+                environment.presentStorageMoveAlert(previous, liveCount)
             }
         }
 
         stageImmediately()
         refreshStorageSummary()
-    }
-
-    private func presentStorageMovedAlert(oldDirectory: URL, itemCount: Int) {
-        let alert = NSAlert()
-        alert.messageText = "Your existing Dock icons stay in the old folder"
-        alert.informativeText = """
-        \(itemCount) divider\(itemCount == 1 ? "" : "s") currently in your Dock still \
-        point\(itemCount == 1 ? "s" : "") to:
-        \(oldDirectory.path)
-
-        They keep working. Clean Up only reviews the new folder, so remove those \
-        icons from the Dock before deleting the old folder.
-        """
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 
     // MARK: - Storage Census & Cleanup
@@ -367,7 +376,7 @@ final class AppState: ObservableObject {
     /// prepared bundle so it can be dragged from Finder.
     func revealStagedBundleInFinder() {
         guard let url = stagedAppURL else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        environment.revealInFinder([url])
     }
 
     func retryStaging() {

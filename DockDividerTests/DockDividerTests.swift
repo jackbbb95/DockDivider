@@ -1568,19 +1568,7 @@ struct DockDividerTests {
         #expect(harness.appState.isOnboardingPresented == false)
         #expect(harness.defaults.bool(forKey: AppState.onboardingDefaultsKey))
 
-        let reloaded = AppState(
-            environment: AppEnvironment(
-                userDefaults: harness.defaults,
-                applicationSupportDirectory: harness.root.appendingPathComponent("ApplicationSupport", isDirectory: true),
-                repairOnLaunch: false,
-                stagesOnLaunch: false,
-                stagesOnDraftChanges: false,
-                registerWithLaunchServices: false,
-                stagingDebounce: 0,
-                liveSet: .unavailable,
-                showsOnboarding: true
-            )
-        )
+        let reloaded = harness.makeAppState(showsOnboarding: true)
         #expect(reloaded.isOnboardingPresented == false)
     }
 
@@ -1589,6 +1577,116 @@ struct DockDividerTests {
         defer { harness.tearDown() }
 
         #expect(harness.appState.isOnboardingPresented == false)
+    }
+
+    // MARK: - UI & Integration Wiring
+
+    @Test @MainActor func testChangingStorageWarnsWhenOldFolderStillBacksDockItems() async throws {
+        var alerts: [(directory: URL, count: Int)] = []
+        let harness = try AppStateTestHarness(storageMoveAlert: { directory, count in
+            alerts.append((directory, count))
+        })
+        defer { harness.tearDown() }
+
+        let oldDirectory = harness.appState.effectiveStorageDirectory
+        try FileManager.default.createDirectory(at: oldDirectory, withIntermediateDirectories: true)
+        let spacerURL = try BundleSynthesizer.createNativeSpacerFile(
+            size: .regular,
+            outputDirectory: oldDirectory
+        )
+
+        let appState = harness.makeAppState(
+            liveSet: .known([StoragePath.canonical(spacerURL)]),
+            storageMoveAlert: { directory, count in
+                alerts.append((directory, count))
+            }
+        )
+
+        appState.updateCustomStorageURL(harness.root)
+        await appState.awaitStagingCompletion()
+
+        #expect(alerts.count == 1)
+        #expect(alerts.first?.directory.standardizedFileURL == oldDirectory.standardizedFileURL)
+        #expect(alerts.first?.count == 1)
+    }
+
+    @Test @MainActor func testChangingStorageStaysQuietWhenOldFolderHasNoLiveItems() async throws {
+        var alertCount = 0
+        let harness = try AppStateTestHarness(storageMoveAlert: { _, _ in
+            alertCount += 1
+        })
+        defer { harness.tearDown() }
+
+        let oldDirectory = harness.appState.effectiveStorageDirectory
+        try FileManager.default.createDirectory(at: oldDirectory, withIntermediateDirectories: true)
+        _ = try BundleSynthesizer.createNativeSpacerFile(
+            size: .regular,
+            outputDirectory: oldDirectory
+        )
+
+        let appState = harness.makeAppState(
+            liveSet: .known([]),
+            storageMoveAlert: { _, _ in
+                alertCount += 1
+            }
+        )
+
+        appState.updateCustomStorageURL(harness.root)
+        await appState.awaitStagingCompletion()
+
+        #expect(alertCount == 0)
+    }
+
+    @Test @MainActor func testKeyboardRevealFallbackUsesStagedBundle() async throws {
+        var revealed: [URL] = []
+        let harness = try AppStateTestHarness(revealInFinder: { urls in
+            revealed = urls
+        })
+        defer { harness.tearDown() }
+
+        let appState = harness.appState
+        appState.stageImmediately()
+        await appState.awaitStagingCompletion()
+
+        guard let stagedURL = appState.stagedAppURL else {
+            Issue.record("Expected a staged bundle")
+            return
+        }
+
+        let hostingView = NSHostingView(rootView: MainWindowView().environmentObject(appState))
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 940, height: 700),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.makeKeyAndOrderFront(nil)
+        hostingView.layoutSubtreeIfNeeded()
+        try? await Task.sleep(nanoseconds: 100_000_000)
+
+        func findDragSource(in view: NSView) -> DragSourceNSView? {
+            if let dragSource = view as? DragSourceNSView {
+                return dragSource
+            }
+            for subview in view.subviews {
+                if let dragSource = findDragSource(in: subview) {
+                    return dragSource
+                }
+            }
+            return nil
+        }
+
+        guard let dragSource = findDragSource(in: hostingView) else {
+            Issue.record("Drag well was not hosted")
+            window.close()
+            return
+        }
+
+        #expect(dragSource.accessibilityPerformPress())
+        #expect(revealed.map(StoragePath.canonical) == [StoragePath.canonical(stagedURL)])
+
+        window.close()
     }
 
     // MARK: - UI & Control Tests
@@ -1808,7 +1906,12 @@ private struct AppStateTestHarness {
     let defaults: UserDefaults
     let appState: AppState
 
-    init(showsOnboarding: Bool = false) throws {
+    init(
+        showsOnboarding: Bool = false,
+        liveSet: StorageLiveSet = .unavailable,
+        revealInFinder: (@MainActor ([URL]) -> Void)? = nil,
+        storageMoveAlert: (@MainActor (URL, Int) -> Void)? = nil
+    ) throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DockDividerTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -1819,19 +1922,58 @@ private struct AppStateTestHarness {
         self.root = root
         self.suiteName = suiteName
         self.defaults = defaults
-        self.appState = AppState(
-            environment: AppEnvironment(
-                userDefaults: defaults,
-                applicationSupportDirectory: root.appendingPathComponent("ApplicationSupport", isDirectory: true),
-                repairOnLaunch: false,
-                stagesOnLaunch: false,
-                stagesOnDraftChanges: false,
-                registerWithLaunchServices: false,
-                stagingDebounce: 0,
-                liveSet: .unavailable,
-                showsOnboarding: showsOnboarding
-            )
+        self.appState = Self.makeAppState(
+            root: root,
+            defaults: defaults,
+            liveSet: liveSet,
+            showsOnboarding: showsOnboarding,
+            revealInFinder: revealInFinder,
+            storageMoveAlert: storageMoveAlert
         )
+    }
+
+    func makeAppState(
+        liveSet: StorageLiveSet = .unavailable,
+        showsOnboarding: Bool = false,
+        revealInFinder: (@MainActor ([URL]) -> Void)? = nil,
+        storageMoveAlert: (@MainActor (URL, Int) -> Void)? = nil
+    ) -> AppState {
+        Self.makeAppState(
+            root: root,
+            defaults: defaults,
+            liveSet: liveSet,
+            showsOnboarding: showsOnboarding,
+            revealInFinder: revealInFinder,
+            storageMoveAlert: storageMoveAlert
+        )
+    }
+
+    private static func makeAppState(
+        root: URL,
+        defaults: UserDefaults,
+        liveSet: StorageLiveSet,
+        showsOnboarding: Bool,
+        revealInFinder: (@MainActor ([URL]) -> Void)?,
+        storageMoveAlert: (@MainActor (URL, Int) -> Void)?
+    ) -> AppState {
+        var environment = AppEnvironment(
+            userDefaults: defaults,
+            applicationSupportDirectory: root.appendingPathComponent("ApplicationSupport", isDirectory: true),
+            repairOnLaunch: false,
+            stagesOnLaunch: false,
+            stagesOnDraftChanges: false,
+            registerWithLaunchServices: false,
+            stagingDebounce: 0,
+            liveSet: liveSet,
+            showsOnboarding: showsOnboarding
+        )
+        if let revealInFinder {
+            environment.revealInFinder = revealInFinder
+        }
+        if let storageMoveAlert {
+            environment.presentStorageMoveAlert = storageMoveAlert
+        }
+        return AppState(environment: environment)
     }
 
     var expectedStorageDirectory: URL {
