@@ -67,19 +67,24 @@ struct AppearanceControlsView: View {
             }
             .buttonStyle(.link)
             .font(.caption)
-            .help(model.style == .line ? "Pick the built-in divider color from your Dock with the magnifying eyedropper and match native dimensions (2.0 pt thickness, 100% height)" : "")
-            .opacity(model.style == .line ? 1.0 : 0.0)
-            .allowsHitTesting(model.style == .line)
-            .accessibilityHidden(model.style != .line)
-            .animation(.easeInOut(duration: 0.22), value: model.style == .line)
+            .help(supportsSampledColor ? "Pick a color from anywhere on screen and apply it to this divider" : "")
+            .opacity(supportsSampledColor ? 1.0 : 0.0)
+            .allowsHitTesting(supportsSampledColor)
+            .accessibilityHidden(!supportsSampledColor)
+            .animation(.easeInOut(duration: 0.22), value: supportsSampledColor)
 
             Button("Reset Appearance") {
-                model.resetToNativeMatch()
+                model.resetAppearance()
             }
             .buttonStyle(.link)
             .font(.caption)
-            .help("Reset appearance settings to match the built-in Dock divider")
+            .help("Reset color, opacity, thickness, height, offset, and image corners without changing the divider style or click action")
         }
+    }
+
+    /// Spacer and image styles do not use the divider tint.
+    private var supportsSampledColor: Bool {
+        model.style != .spacer && model.style != .image
     }
 
     // MARK: - Spacer Section
@@ -501,8 +506,6 @@ struct AppearanceControlsView: View {
             Task { @MainActor in
                 model.colorPreset = .custom
                 model.updateCustomColor(from: Color(nsColor: selectedColor))
-                model.thickness = 2.0
-                model.heightRatio = 1.0
             }
         }
     }

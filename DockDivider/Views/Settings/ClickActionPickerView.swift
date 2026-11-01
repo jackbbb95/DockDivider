@@ -19,6 +19,7 @@ struct ClickActionPickerView: View {
     @State private var shellScriptError: String?
 
     private static var cachedShortcuts: [String]?
+    private static var appIconCache: [String: NSImage] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -190,6 +191,7 @@ struct ClickActionPickerView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Refresh Shortcuts List")
+                    .accessibilityLabel("Refresh Shortcuts list")
                 }
             } else {
                 HStack(spacing: 6) {
@@ -204,6 +206,7 @@ struct ClickActionPickerView: View {
                     }
                     .buttonStyle(.borderless)
                     .help("Refresh Shortcuts List")
+                    .accessibilityLabel("Refresh Shortcuts list")
                 }
             }
         }
@@ -296,39 +299,15 @@ struct ClickActionPickerView: View {
     /// Runs `shortcuts list` off the main actor with a hard timeout. The runner
     /// action itself is detached; this list call is only for the editor.
     nonisolated private static func fetchShortcutNames(timeout: TimeInterval) -> [String]? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
-        process.arguments = ["list"]
-
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
+        guard let result = BoundedProcess.run(
+            executablePath: "/usr/bin/shortcuts",
+            arguments: ["list"],
+            timeout: timeout
+        ), !result.timedOut else {
             return nil
         }
 
-        let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.02)
-        }
-
-        if process.isRunning {
-            process.terminate()
-            process.waitUntilExit()
-            return nil
-        }
-
-        let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-
-        guard let output = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-
-        return output
+        return result.outputText
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -416,7 +395,7 @@ struct ClickActionPickerView: View {
     private func appRow(for appURLString: String) -> some View {
         let fileURL = (URL(string: appURLString)?.standardizedFileURL ?? URL(fileURLWithPath: appURLString)).standardizedFileURL
         let displayName = fileURL.deletingPathExtension().lastPathComponent
-        let icon = NSWorkspace.shared.icon(forFile: fileURL.path)
+        let icon = cachedAppIcon(for: fileURL.path)
 
         return HStack(spacing: 8) {
             Image(nsImage: icon)
@@ -439,6 +418,7 @@ struct ClickActionPickerView: View {
             }
             .buttonStyle(.plain)
             .help("Remove application")
+            .accessibilityLabel("Remove \(displayName.isEmpty ? appURLString : displayName)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
@@ -450,6 +430,17 @@ struct ClickActionPickerView: View {
                         .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
                 )
         )
+    }
+
+    /// IconServices lookups are cheap but not free, and this view re-renders on
+    /// every draft edit. Cache per application path for the session.
+    private func cachedAppIcon(for path: String) -> NSImage {
+        if let cached = Self.appIconCache[path] {
+            return cached
+        }
+        let icon = NSWorkspace.shared.icon(forFile: path)
+        Self.appIconCache[path] = icon
+        return icon
     }
 
     private func addApplications() {

@@ -31,10 +31,17 @@ func openURL(_ url: URL) {
 
 /// Starts a child process and deliberately does not wait for it. Long-running
 /// shell commands, Shortcuts, and utilities must not keep the helper alive.
-func launchDetached(_ executablePath: String, arguments: [String]) {
+func launchDetached(
+    _ executablePath: String,
+    arguments: [String],
+    workingDirectory: URL? = nil
+) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: executablePath)
     process.arguments = arguments
+    if let workingDirectory {
+        process.currentDirectoryURL = workingDirectory
+    }
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
@@ -245,6 +252,7 @@ case .shellCommand:
         let scriptContent = """
         #!/bin/zsh
         rm -f -- "$0"
+        cd "$HOME" || true
         \(command)
         exec zsh
         """
@@ -275,7 +283,11 @@ case .shellCommand:
             openURL(scriptURL)
         }
     } else {
-        launchDetached("/bin/zsh", arguments: ["-c", command])
+        launchDetached(
+            "/bin/zsh",
+            arguments: ["-c", command],
+            workingDirectory: FileManager.default.homeDirectoryForCurrentUser
+        )
     }
 }
 

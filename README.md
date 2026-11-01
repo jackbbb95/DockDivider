@@ -9,7 +9,7 @@ bar agent, or background process left behind.
 
 ![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-blue)
 ![Swift 5](https://img.shields.io/badge/Swift-5%20language%20mode-orange)
-![Xcode 15+](https://img.shields.io/badge/Xcode-15%2B-blue)
+![Xcode 16+](https://img.shields.io/badge/Xcode-16%2B-blue)
 
 ---
 
@@ -18,7 +18,8 @@ bar agent, or background process left behind.
 - **Divider styles**
   - **Line** — a native-style separator with configurable thickness, height,
     opacity, color, and orientation.
-  - **Dashed** — a segmented separator with a configurable dash count.
+  - **Dashed** — a segmented separator whose dash count and spacing are
+    derived from thickness, height, and opacity so every resolution matches.
   - **Dot** — a small centered circle.
   - **Label** — horizontal or vertical text, or an SF Symbol.
   - **Spacer** — true native Dock spacers (`.dockspace`, `.docksmallspace`,
@@ -46,7 +47,7 @@ bar agent, or background process left behind.
 ## Requirements
 
 - macOS 13.0 (Ventura) or later
-- Xcode 15.0 or later (the project uses the Swift 5 language mode)
+- Xcode 16.0 or later (the project uses filesystem-synchronized groups and the Swift 5 language mode)
 - No third-party dependencies
 
 DockDivider is distributed directly, outside the Mac App Store. The app is not
@@ -102,10 +103,22 @@ Divider-XXXXXXXX.app/
         └── .dockdivider.json      # ownership/version marker
 ```
 
+The divider artwork is also attached as a Finder custom icon (`Icon\r` plus
+Finder metadata) so the Dock shows the bare line instead of wrapping it in the
+system app-icon squircle. That attachment happens after the bundle is ad-hoc
+signed, so generated bundles pass `codesign --verify` but not
+`codesign --verify --deep --strict`. This only affects signature inspection of
+local files; the Dock launches them normally.
+
 Deleting a bundle breaks the Dock icon that points to it. Use **Clean Up…** to
 review bundles that are no longer referenced by the Dock; live and currently
 staged bundles are always excluded. The folder's `README.txt` explains the same
 rules for anyone browsing it in Finder.
+
+Changing the storage folder does not move dividers that are already in the Dock.
+They keep launching from the old folder, and **Clean Up…** only reviews the
+current one. DockDivider warns when this happens; remove those Dock icons before
+deleting the old folder.
 
 DockDivider never edits `com.apple.dock.plist`, never runs `killall Dock`, and
 never deletes files without an explicit confirmation.
@@ -136,8 +149,11 @@ SwiftUI helpers live in separate extensions or views.
 ## Privacy
 
 DockDivider collects no analytics and makes no network requests. Generated
-bundles run only when you click them in the Dock. See
-`DockDivider/PrivacyInfo.xcprivacy` for the required-reason API declarations.
+bundles run only when you click them in the Dock. Actions that drive System
+Events (Toggle Dark Mode, Toggle Mute) are AppleScript, so macOS may ask for
+Automation permission; the divider still works without it, minus that action.
+See `DockDivider/PrivacyInfo.xcprivacy` for the required-reason API
+declarations.
 
 ---
 

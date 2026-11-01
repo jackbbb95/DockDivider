@@ -235,7 +235,13 @@ enum BundleSynthesizer {
                 }
 
                 let missingIconFork = !fileManager.fileExists(atPath: iconForkURL.path)
-                let needsRunnerUpdate = latestRunnerURL != nil
+                // Upgrading the runner by itself is reserved for bundles that
+                // carry our marker. Legacy unmarked bundles are migrated only
+                // when another repair (plist, orientation, or icon) touches
+                // them, so a first launch does not re-sign an entire legacy
+                // storage folder at once.
+                let needsRunnerUpdate = hasMarker
+                    && latestRunnerURL != nil
                     && marker?.runnerVersion != BundleMarker.currentRunnerVersion
 
                 // Only re-sign and re-apply custom icon if the bundle actually needed migration/repair
@@ -255,8 +261,10 @@ enum BundleSynthesizer {
                 }()
 
                 // Migrate legacy bundles to the marker format, and refresh the
-                // marker when the runner was upgraded.
-                if !hasMarker || marker?.runnerVersion != BundleMarker.currentRunnerVersion {
+                // marker when a marked bundle's runner was upgraded.
+                if !hasMarker
+                    || (marker?.runnerVersion != BundleMarker.currentRunnerVersion
+                        && needsRunnerUpdate) {
                     try? BundleMarker.write(BundleMarker.makeCurrent(), to: itemURL)
                 }
 

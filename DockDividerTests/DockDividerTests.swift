@@ -107,6 +107,116 @@ struct DockDividerTests {
         #expect(loaded == model)
     }
 
+    @Test func testDraftPersistenceKeepsArtworkOutOfJSON() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DockDividerDraftImageTests-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        var model = DividerModel()
+        model.style = .image
+        model.imageID = UUID()
+        model.imageData = Data(repeating: 0xAB, count: 4096)
+
+        DraftPersistence.save(model, to: directory)
+
+        let jsonData = try Data(contentsOf: DraftPersistence.url(in: directory))
+        let jsonText = String(decoding: jsonData, as: UTF8.self)
+        #expect(!jsonText.contains("imageData"))
+        #expect(jsonData.count < model.imageData!.count)
+        #expect(FileManager.default.fileExists(
+            atPath: DraftPersistence.imageURL(in: directory).path
+        ))
+
+        let loaded = try #require(DraftPersistence.load(from: directory))
+        #expect(loaded.imageData == model.imageData)
+        #expect(loaded.imageID == model.imageID)
+    }
+
+    @Test func testDraftPersistenceRemovesArtworkWhenCleared() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DockDividerDraftImageClearTests-\(UUID().uuidString)", isDirectory: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        var model = DividerModel()
+        model.style = .image
+        model.imageID = UUID()
+        model.imageData = Data(repeating: 0xCD, count: 2048)
+        DraftPersistence.save(model, to: directory)
+        #expect(FileManager.default.fileExists(
+            atPath: DraftPersistence.imageURL(in: directory).path
+        ))
+
+        model.imageData = nil
+        model.imageID = nil
+        DraftPersistence.save(model, to: directory)
+
+        #expect(!FileManager.default.fileExists(
+            atPath: DraftPersistence.imageURL(in: directory).path
+        ))
+        let loaded = try #require(DraftPersistence.load(from: directory))
+        #expect(loaded.imageData == nil)
+    }
+
+    @Test func testBoundedProcessCapturesOutput() {
+        let result = BoundedProcess.run(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "printf hello"],
+            timeout: 5
+        )
+
+        #expect(result?.timedOut == false)
+        #expect(result?.outputText == "hello")
+        #expect(result?.terminationStatus == 0)
+    }
+
+    @Test func testBoundedProcessEscalatesToKillWhenTermIsIgnored() {
+        let start = Date()
+        let result = BoundedProcess.run(
+            executablePath: "/bin/sh",
+            arguments: ["-c", "trap '' TERM; while true; do sleep 0.05; done"],
+            timeout: 0.2
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        #expect(result?.timedOut == true)
+        #expect(elapsed < 5)
+    }
+
+    @Test func testLiveManagedItemCountMatchesLiveBundles() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DockDividerLiveCountTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+        }
+
+        let divider = directory.appendingPathComponent("Divider.app", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: divider.appendingPathComponent("Contents/Resources", isDirectory: true),
+            withIntermediateDirectories: true
+        )
+        try BundleMarker.write(BundleMarker.makeCurrent(), to: divider)
+
+        let unrelated = directory.appendingPathComponent("Unrelated.app", isDirectory: true)
+        try FileManager.default.createDirectory(at: unrelated, withIntermediateDirectories: true)
+
+        let spacer = directory.appendingPathComponent("Spacer-Test.dockspace")
+        FileManager.default.createFile(atPath: spacer.path, contents: Data())
+
+        let livePaths: Set<String> = [
+            StoragePath.canonical(divider),
+            StoragePath.canonical(unrelated),
+            StoragePath.canonical(spacer)
+        ]
+
+        #expect(StorageMaintenance.liveManagedItemCount(in: directory, livePaths: livePaths) == 2)
+        #expect(StorageMaintenance.liveManagedItemCount(in: directory, livePaths: []) == 0)
+    }
+
     @Test func testAppStateLoadsPersistedDraft() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DockDividerDraftStateTests-\(UUID().uuidString)", isDirectory: true)
@@ -133,7 +243,8 @@ struct DockDividerTests {
                 stagesOnDraftChanges: false,
                 registerWithLaunchServices: false,
                 stagingDebounce: 0,
-                persistsDraft: true
+                persistsDraft: true,
+                liveSet: .unavailable
             )
         )
 
@@ -162,6 +273,85 @@ struct DockDividerTests {
         #expect(model.hoverLabel == "")
         #expect(model.roundImageCorners == true)
         #expect(model.imageCornerRadiusRatio == 0.225)
+    }
+
+    @Test func testResetAppearanceLeavesStyleAndActionAlone() {
+        var model = DividerModel()
+        model.style = .dashed
+        model.colorPreset = .dark
+        model.opacity = 0.95
+        model.thickness = 4.0
+        model.heightRatio = 0.3
+        model.verticalOffset = 12.0
+        model.hoverLabel = "Custom Label"
+        model.actionConfig.actionType = .runShortcut
+        model.actionConfig.shortcutName = "Focus"
+
+        model.resetAppearance()
+
+        #expect(model.style == .dashed)
+        #expect(model.hoverLabel == "Custom Label")
+        #expect(model.actionConfig.actionType == .runShortcut)
+        #expect(model.actionConfig.shortcutName == "Focus")
+        #expect(model.colorPreset == .adaptiveWhite)
+        #expect(model.opacity == 0.80)
+        #expect(model.thickness == 1.5)
+        #expect(model.heightRatio == 0.65)
+        #expect(model.verticalOffset == 0.0)
+    }
+
+    @Test func testValidationWarnsOnlyForConfigurationsThatDoNothing() {
+        var model = DividerModel()
+        #expect(model.validationWarning == nil)
+
+        model.style = .image
+        #expect(model.validationWarning != nil)
+        model.imageData = Data([0x01])
+        #expect(model.validationWarning == nil)
+
+        model.style = .line
+        model.actionConfig.actionType = .runShortcut
+        #expect(model.validationWarning != nil)
+        model.actionConfig.shortcutName = "Focus"
+        #expect(model.validationWarning == nil)
+
+        model.actionConfig.actionType = .shellCommand
+        #expect(model.validationWarning != nil)
+        model.actionConfig.shellCommand = "echo hello"
+        #expect(model.validationWarning == nil)
+
+        model.actionConfig.actionType = .openAppsAndURLs
+        #expect(model.validationWarning != nil)
+        model.actionConfig.webURLs = ["https://example.com"]
+        #expect(model.validationWarning == nil)
+    }
+
+    @Test func testStorageLocationWarningForAppContainer() {
+        let suiteName = "DockDividerTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        let containerSupport = home.appendingPathComponent(
+            "Library/Containers/me.bogle.DockDivider/Data/Library/Application Support",
+            isDirectory: true
+        )
+
+        let store = StorageLocationStore(
+            userDefaults: defaults,
+            applicationSupportDirectory: containerSupport
+        )
+
+        #expect(store.isUsingDefaultStorageLocation)
+        #expect(store.storageLocationWarning != nil)
+
+        let customRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DockDividerStorageTests-\(UUID().uuidString)", isDirectory: true)
+        store.updateCustomStorageURL(customRoot)
+        #expect(!store.isUsingDefaultStorageLocation)
+        #expect(store.storageLocationWarning == nil)
     }
 
     @Test func testColorConversionAndEffectiveColors() {
@@ -842,6 +1032,58 @@ struct DockDividerTests {
         #expect(FileManager.default.isExecutableFile(atPath: execURL.path))
     }
 
+    @Test @MainActor func testRepairLeavesUnmarkedLegacyRunnerAlone() throws {
+        guard BundleStagingService.locateRunnerExecutable() != nil else {
+            Issue.record("divider_runner was not found in the built products")
+            return
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var model = DividerModel()
+        model.orientation = DividerOrientation.currentSystemDockOrientation
+
+        guard let iconData = IconRenderer.renderIconData(for: model) else {
+            Issue.record("Failed to generate test icon data")
+            return
+        }
+
+        let appURL = try BundleSynthesizer.createDividerApp(
+            iconData: iconData,
+            config: ActionConfig.none,
+            hoverLabel: "Legacy",
+            model: model,
+            outputDirectory: tempDir,
+            registerWithLaunchServices: false
+        )
+
+        // Simulate a bundle written before ownership markers existed.
+        try FileManager.default.removeItem(at: BundleMarker.url(for: appURL))
+
+        let iconForkURL = appURL.appendingPathComponent("Icon\r")
+        if !FileManager.default.fileExists(atPath: iconForkURL.path) {
+            FileManager.default.createFile(atPath: iconForkURL.path, contents: Data())
+        }
+
+        let execURL = appURL.appendingPathComponent("Contents/MacOS/divider_runner")
+        let staleRunner = Data("legacy runner".utf8)
+        try staleRunner.write(to: execURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: execURL.path
+        )
+
+        BundleSynthesizer.repairExistingBundles(in: [tempDir])
+
+        // A runner upgrade alone must not pull every legacy bundle into a
+        // re-signing pass; another repair will migrate it later.
+        #expect(!BundleMarker.exists(at: appURL))
+        #expect(try Data(contentsOf: execURL) == staleRunner)
+    }
+
     @Test func testBundleSynthesizerCreateNativeSpacerFiles() throws {
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
@@ -1406,7 +1648,8 @@ private struct AppStateTestHarness {
                 stagesOnLaunch: false,
                 stagesOnDraftChanges: false,
                 registerWithLaunchServices: false,
-                stagingDebounce: 0
+                stagingDebounce: 0,
+                liveSet: .unavailable
             )
         )
     }

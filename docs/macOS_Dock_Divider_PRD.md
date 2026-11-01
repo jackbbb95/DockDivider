@@ -14,7 +14,7 @@ macOS does not provide a native user interface for organizing the Dock with visu
 
 This utility solves that friction by providing a **lightweight, standalone application** that generates bespoke, self-contained `.app` bundles on the fly with pixel-perfect icons (native-style vertical lines, dots, custom text/SF Symbol labels, blank spacers, or custom images). Users simply configure their divider—and optionally assign a **Smart Click Action** (such as launching a group of apps, triggering a system utility action, or creating an "Invisible App Launcher" using a blank spacer)—and **drag and drop it directly from the app window onto their Dock**.
 
-Because the utility relies on standard macOS file drag-and-drop (`NSItemProvider` / `NSPasteboard` with file URLs) rather than modifying `com.apple.dock.plist` or terminating the Dock process, it never needs Accessibility permissions and never runs a background process. It is distributed directly rather than through the Mac App Store: the app creates, repairs, and ad-hoc signs executable bundles in a user-selected folder, which is incompatible with App Sandbox requirements. Once dropped into the Dock, dividers persist indefinitely with **zero background processes** required.
+Because the utility relies on standard macOS file drag-and-drop (`NSItemProvider` / `NSPasteboard` with file URLs) rather than modifying `com.apple.dock.plist` or terminating the Dock process, it never needs Accessibility permissions and never runs a background process. Actions that drive System Events (Toggle Dark Mode, Toggle Mute) are AppleScript, so macOS may show an Automation prompt the first time one runs. It is distributed directly rather than through the Mac App Store: the app creates, repairs, and ad-hoc signs executable bundles in a user-selected folder, which is incompatible with App Sandbox requirements. Once dropped into the Dock, dividers persist indefinitely with **zero background processes** required.
 
 ---
 
@@ -42,7 +42,7 @@ Wait-free Dock insertion works because the macOS Dock natively accepts any valid
 * **No Permissions Needed:** When a user initiates a drag from the utility's "Drag Well", the app writes a uniquely named `.app` bundle into a persistent local directory and hands the `file://` URL to `NSItemProvider`. The user drops it directly into their desired position on the Dock.
 * **Persistence Location:** Generated bundles live in `~/Library/Application Support/DockDividers/` by default. Users can choose a different root with `NSOpenPanel`; the app stores a security-scoped bookmark and places generated content in a `DockDividers` subfolder so the selected root never fills with invisible app bundles.
 * **Direct Distribution:** Because DockDivider writes executable bundles, repairs them, and ad-hoc signs them with `/usr/bin/codesign`, it is distributed directly with Hardened Runtime enabled and App Sandbox disabled. It intentionally ships outside the Mac App Store.
-* **Ownership Marker:** Every current bundle contains `Contents/Resources/.dockdivider.json`, recording the app's bundle identifier, runner version, and creation date. Repair only rewrites bundles that carry this marker, so unrelated apps are never touched.
+* **Ownership Marker:** Every current bundle contains `Contents/Resources/.dockdivider.json`, recording the app version, runner version, and creation date. Repair recognises marked bundles and legacy bundles by their runner executable, and only rewrites a bundle when a plist, orientation, icon, or marked-runner repair is needed.
 
 ### 3.2 How Spacers & "Invisible App Hiders" Work via Drag-and-Drop
 Passive spacers use the native Dock spacer file types rather than an app bundle:
@@ -227,8 +227,9 @@ Supported `actionType` values:
 macOS Dock icons look sharpest when provided as a multi-resolution `.icns` file rather than a single bitmap pasted onto a folder.
 1. Render the user's configuration (line, dot, SF Symbol/monogram, transparent spacer, or transformed custom image) with CoreGraphics at standard icon resolutions (`16x16`, `32x32`, `64x64`, `128x128`, `256x256`, `512x512`, and a single `1024x1024` slot) so the Dock can pick the best representation.
 2. Write the representations into an `.icns` container using `ImageIO` (`CGImageDestinationCreateWithURL(url, UTType.icns.identifier as CFString, count, nil)`).
-3. Save `AppIcon.icns` and `ActionConfig.json` into the generated `.app/Contents/Resources/` directory and invoke `NSWorkspace.shared.noteFileSystemChanged(bundleURL.path)` so Finder and the Dock immediately recognize the icon before the drag completes.
-4. Cache the rendered NSImage used for `NSWorkspace.setIcon` and hand it to the staging pipeline, so the icon the Dock shows matches the preview without re-rendering.
+3. Assemble the bundle in a hidden `.staging-*` folder: copy the runner, write `Info.plist`, `PkgInfo`, `ActionConfig.json`, the divider model, optional `CustomImage.png`, and the ownership marker.
+4. Ad-hoc sign the finished bundle (`codesign --force --deep --sign -`), then apply the un-enclosed artwork as a Finder custom icon and notify the filesystem so Finder and the Dock pick it up immediately. The custom icon is attached after signing, which is why generated bundles are valid for `codesign --verify` but not `--deep --strict`.
+5. Hand the rendered `NSImage` to the staging pipeline instead of re-rendering it, so the icon the Dock shows matches the preview.
 
 ### 6.4 Orphaned File Hygiene (Storage Cleanup)
 Since the app has no active divider list and generates a staging `.app` bundle whenever the draft changes, a user might tweak sliders and leave several unused bundles behind.
@@ -243,10 +244,11 @@ Since the app has no active divider list and generates a staging `.app` bundle w
 | Edge Case | Impact | Mitigation |
 | :--- | :--- | :--- |
 | **User clicks a passive divider in the Dock** | Could show an error dialog ("App is damaged") or bounce in the Dock. | Include the valid, ad-hoc signed `divider_runner` executable with `LSUIElement = true` in `Info.plist`. When `actionType == "none"`, it exits immediately with no running indicator. |
-| **macOS Gatekeeper / Quarantine on generated `.app`** | macOS might flag dynamically created `.app` bundles if unsigned or modified incorrectly. | Remove quarantine attributes, ad-hoc sign each finished bundle, and keep dynamic data (`AppIcon.icns`, `ActionConfig.json`, `DividerModel.json`) in `Contents/Resources/`. |
+| **macOS Gatekeeper / Quarantine on generated `.app`** | macOS might flag dynamically created `.app` bundles if unsigned or modified incorrectly. | Remove quarantine attributes, ad-hoc sign each finished bundle, and keep dynamic data (`AppIcon.icns`, `ActionConfig.json`, `DividerModel.json`) in `Contents/Resources/`. The Finder custom icon is attached after signing, so `codesign --verify` succeeds while `--deep --strict` reports Finder metadata; the Dock still launches the local bundle normally. |
 | **User drags the same config multiple times** | macOS Dock ignores dragging the *exact same* `.app` path twice (it just moves the existing icon). | Every drag operation publishes a fresh `.app` bundle with a new `UUID` in its filename and `CFBundleIdentifier`. |
 | **User deletes the utility app later** | Bundles in a custom folder survive; bundles in an app container would not. | Default to `~/Library/Application Support/DockDividers`, support a user-selected root with a security-scoped bookmark, and warn when the selected folder is inside an app container. |
-| **App update changes action schema or runner behavior** | Older generated bundles could behave differently from the current editor. | Stamp each bundle with an ownership/runner-version marker and repair only marked bundles whose runner version differs. Legacy unmarked bundles are left untouched until another repair explicitly updates them. |
+| **User changes the storage folder** | Dock icons placed earlier keep pointing at the old folder, where Clean Up no longer looks. | Warn at switch time when the old folder still backs Dock icons, and point the user at the old folder before they delete it. |
+| **App update changes action schema or runner behavior** | Older generated bundles could behave differently from the current editor. | Stamp each bundle with an ownership/runner-version marker and repair marked bundles whose runner version differs. Legacy unmarked bundles keep working and are migrated only when another repair (plist, orientation, or icon) touches them. |
 
 ---
 

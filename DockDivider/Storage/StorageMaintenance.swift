@@ -11,6 +11,9 @@ import Foundation
 /// unused items to the user and get confirmation before calling `cleanUp`.
 nonisolated enum StorageMaintenance {
 
+    /// Extensions macOS treats as native Dock spacer trigger files.
+    static let spacerExtensions: Set<String> = ["dockspace", "docksmallspace", "dockflexspace"]
+
     // MARK: - README
 
     static func ensureReadme(in directory: URL) {
@@ -81,7 +84,6 @@ nonisolated enum StorageMaintenance {
             return StorageCensus(items: [], unusedItems: [], liveSetAvailable: liveSetAvailable)
         }
 
-        let spacerExtensions: Set<String> = ["dockspace", "docksmallspace", "dockflexspace"]
         var items: [StorageItem] = []
 
         for entry in entries {
@@ -89,7 +91,7 @@ nonisolated enum StorageMaintenance {
             if entry.pathExtension == "app" {
                 guard BundleMarker.isDockDividerBundle(at: entry) else { continue }
                 kind = .appBundle
-            } else if spacerExtensions.contains(entry.pathExtension) {
+            } else if Self.spacerExtensions.contains(entry.pathExtension) {
                 kind = .nativeSpacer
             } else {
                 // README.txt, other user files, and unrelated bundles are never
@@ -135,6 +137,32 @@ nonisolated enum StorageMaintenance {
             unusedItems: unusedItems,
             liveSetAvailable: liveSetAvailable
         )
+    }
+
+    /// Counts DockDivider-managed items in a folder that the Dock still references.
+    ///
+    /// Used before switching storage folders: once the switch happens, the
+    /// census no longer looks at the old folder, so this is the last reliable
+    /// moment to tell the user that some Dock icons will keep pointing there.
+    static func liveManagedItemCount(in directory: URL, livePaths: Set<String>) -> Int {
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+        ) else {
+            return 0
+        }
+
+        return entries.reduce(into: 0) { count, entry in
+            let isManaged: Bool
+            if entry.pathExtension == "app" {
+                isManaged = BundleMarker.isDockDividerBundle(at: entry)
+            } else {
+                isManaged = Self.spacerExtensions.contains(entry.pathExtension)
+            }
+            guard isManaged, livePaths.contains(StoragePath.canonical(entry)) else { return }
+            count += 1
+        }
     }
 
     // MARK: - Cleanup

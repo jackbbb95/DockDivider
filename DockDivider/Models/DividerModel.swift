@@ -234,18 +234,22 @@ nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
 
     // MARK: - Mutating Methods
 
-    mutating func resetToNativeMatch() {
-        style = .line
-        orientation = DividerOrientation.currentSystemDockOrientation
-        spacerSize = .regular
+    mutating func resetAppearance() {
         colorPreset = .adaptiveWhite
         opacity = 0.80
         thickness = 1.5
         heightRatio = 0.65
         verticalOffset = 0.0
-        hoverLabel = ""
         roundImageCorners = true
         imageCornerRadiusRatio = 0.225
+    }
+
+    mutating func resetToNativeMatch() {
+        style = .line
+        orientation = DividerOrientation.currentSystemDockOrientation
+        spacerSize = .regular
+        resetAppearance()
+        hoverLabel = ""
     }
 
     // MARK: - Coding Keys & Initializer

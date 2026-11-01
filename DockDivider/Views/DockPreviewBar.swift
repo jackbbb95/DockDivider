@@ -79,6 +79,8 @@ struct DockPreviewBar: View {
                 }
                 .buttonStyle(.plain)
                 .help("Toggle Dock Preview Light/Dark Glass")
+                .accessibilityLabel("Preview appearance")
+                .accessibilityValue(currentIsDarkDock ? "Dark" : "Light")
             }
         }
         .padding(.horizontal, 2)
@@ -113,6 +115,15 @@ struct DockPreviewBar: View {
                 .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.06), radius: 6, y: 2)
+        // The simulated Dock is decorative; read it as one sentence instead of
+        // exposing placeholder app icons and the tooltip pill individually.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Dock preview")
+        .accessibilityValue(
+            "\(model.style.displayName) divider, "
+            + "\(model.orientation == .vertical ? "bottom" : "side") Dock, "
+            + "\(currentIsDarkDock ? "dark" : "light") appearance"
+        )
     }
 
     // MARK: - Desktop Wallpaper Backdrop (Aquatic Lake & Deep Water Theme)

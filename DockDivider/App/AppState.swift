@@ -23,6 +23,9 @@ nonisolated struct AppEnvironment {
     var registerWithLaunchServices: Bool
     var stagingDebounce: TimeInterval
     var persistsDraft: Bool = true
+    /// Source of "what is currently in the Dock". Tests inject a known or
+    /// unavailable set so they never read the developer's real Dock.
+    var liveSet: StorageLiveSet = .currentDock
 
     static var live: AppEnvironment {
         AppEnvironment(
@@ -55,6 +58,7 @@ final class AppState: ObservableObject {
     private let staging: StagingController
     private let repairer: BundleRepairer
     private var cancellables = Set<AnyCancellable>()
+    private var summaryRefreshTask: Task<Void, Never>?
 
     // MARK: - Forwarded State
 
@@ -182,10 +186,12 @@ final class AppState: ObservableObject {
                 .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
                 .sink { [weak self] draft in
                     guard let self else { return }
-                    let directory = self.environment.applicationSupportDirectory
-                    Task.detached(priority: .utility) {
-                        DraftPersistence.save(draft, to: directory)
-                    }
+                    // Saving on the main actor keeps writes ordered: a newer
+                    // draft can never be overwritten by a slower, older save.
+                    DraftPersistence.save(
+                        draft,
+                        to: self.environment.applicationSupportDirectory
+                    )
                 }
                 .store(in: &cancellables)
 
@@ -209,45 +215,89 @@ final class AppState: ObservableObject {
     // MARK: - Storage Directory Management
 
     func selectStorageDirectory() {
+        let previous = effectiveStorageDirectory
         guard storageLocation.selectStorageDirectory() else { return }
-        handleStorageLocationChanged()
+        handleStorageLocationChanged(from: previous)
     }
 
     func resetStorageDirectory() {
+        let previous = effectiveStorageDirectory
         storageLocation.resetStorageDirectory()
-        handleStorageLocationChanged()
+        handleStorageLocationChanged(from: previous)
     }
 
     func updateCustomStorageURL(_ url: URL?) {
+        let previous = effectiveStorageDirectory
         storageLocation.updateCustomStorageURL(url)
-        handleStorageLocationChanged()
+        handleStorageLocationChanged(from: previous)
     }
 
     func revealStorageDirectoryInFinder() {
         storageLocation.revealInFinder()
     }
 
-    private func handleStorageLocationChanged() {
-        StorageMaintenance.ensureReadme(in: effectiveStorageDirectory)
+    private func handleStorageLocationChanged(from previous: URL) {
+        let newDirectory = effectiveStorageDirectory
+        StorageMaintenance.ensureReadme(in: newDirectory)
+
+        // Cleanup only ever looks at the current folder. Dock icons placed
+        // before the switch keep pointing at the old one, so say so instead of
+        // letting those bundles look like they vanished. Ask before staging so
+        // the modal alert cannot delay the first artifact in the new folder.
+        if StoragePath.canonical(previous) != StoragePath.canonical(newDirectory),
+           let livePaths = environment.liveSet.resolvedPaths() {
+            let liveCount = StorageMaintenance.liveManagedItemCount(
+                in: previous,
+                livePaths: livePaths
+            )
+            if liveCount > 0 {
+                presentStorageMovedAlert(oldDirectory: previous, itemCount: liveCount)
+            }
+        }
+
         stageImmediately()
         refreshStorageSummary()
+    }
+
+    private func presentStorageMovedAlert(oldDirectory: URL, itemCount: Int) {
+        let alert = NSAlert()
+        alert.messageText = "Your existing Dock icons stay in the old folder"
+        alert.informativeText = """
+        \(itemCount) divider\(itemCount == 1 ? "" : "s") currently in your Dock still \
+        point\(itemCount == 1 ? "s" : "") to:
+        \(oldDirectory.path)
+
+        They keep working. Clean Up only reviews the new folder, so remove those \
+        icons from the Dock before deleting the old folder.
+        """
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     // MARK: - Storage Census & Cleanup
 
     /// Recomputes the small summary shown in the footer. The full item list is
     /// loaded on demand by the cleanup sheet.
+    ///
+    /// Staging publishes a new artifact on every debounced edit, so this is
+    /// coalesced: a burst of staging changes produces one census pass instead
+    /// of walking every bundle directory dozens of times.
     func refreshStorageSummary() {
-        let directory = effectiveStorageDirectory
-        let excludedPaths = staging.storageExclusions
+        summaryRefreshTask?.cancel()
+        summaryRefreshTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled, let self else { return }
 
-        Task { [weak self] in
+            let directory = self.effectiveStorageDirectory
+            let excludedPaths = self.staging.storageExclusions
             let census = await StorageMaintenance.buildCensus(
                 for: directory,
-                excluding: excludedPaths
+                excluding: excludedPaths,
+                liveSet: self.environment.liveSet
             )
-            guard let self else { return }
-            guard StoragePath.canonical(self.effectiveStorageDirectory) == StoragePath.canonical(directory) else {
+
+            guard !Task.isCancelled,
+                  StoragePath.canonical(self.effectiveStorageDirectory) == StoragePath.canonical(directory) else {
                 return
             }
             self.storageSummary = census.summary
@@ -259,7 +309,8 @@ final class AppState: ObservableObject {
         let excludedPaths = staging.storageExclusions
         return await StorageMaintenance.buildCensus(
             for: directory,
-            excluding: excludedPaths
+            excluding: excludedPaths,
+            liveSet: environment.liveSet
         )
     }
 
