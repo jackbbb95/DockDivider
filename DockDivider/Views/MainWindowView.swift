@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Foundation
+import AppKit
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
@@ -73,6 +74,7 @@ struct MainWindowView: View {
         }
         .padding(18)
         .frame(minWidth: 920, idealWidth: 940, maxWidth: .infinity, minHeight: 620, idealHeight: 700, maxHeight: .infinity)
+        .background(InitialFocusClearer())
         .sheet(isPresented: $showingStorageCleanup) {
             StorageCleanupView()
                 .environmentObject(appState)
@@ -114,11 +116,12 @@ struct MainWindowView: View {
             }
 
             if let summary = appState.storageSummary {
-                Text(storageSummaryText(summary))
+                Text(ByteCountFormatter.string(fromByteCount: summary.totalBytes, countStyle: .file))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .help("Generated dividers in this folder and their total disk usage")
+                    .help("Total disk usage of the generated dividers in this folder")
+                    .accessibilityLabel("Divider storage size")
             }
 
             Spacer()
@@ -167,12 +170,65 @@ struct MainWindowView: View {
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         )
     }
+}
 
-    private func storageSummaryText(_ summary: StorageSummary) -> String {
-        let size = ByteCountFormatter.string(fromByteCount: summary.totalBytes, countStyle: .file)
-        if summary.liveSetAvailable, summary.unusedCount > 0 {
-            return "\(summary.itemCount) items · \(size) · \(summary.unusedCount) unused"
+// MARK: - Initial Focus
+
+/// Clears the first responder SwiftUI installs on the window's first text
+/// field. The window itself becomes the first responder, so typing does not
+/// land in the tooltip field until the user clicks or tabs into a control.
+private struct InitialFocusClearer: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        InitialFocusClearerView()
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+private final class InitialFocusClearerView: NSView {
+    private var didClearFocus = false
+    private var becameKeyObserver: NSObjectProtocol?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+
+        becameKeyObserver.map(NotificationCenter.default.removeObserver)
+        becameKeyObserver = nil
+
+        guard !didClearFocus, let window else { return }
+
+        if window.isKeyWindow {
+            clearFocus(in: window)
+        } else {
+            becameKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didBecomeKeyNotification,
+                object: window,
+                queue: .main
+            ) { [weak self, weak window] _ in
+                guard let self, let window else { return }
+                self.clearFocus(in: window)
+            }
         }
-        return "\(summary.itemCount) items · \(size)"
+    }
+
+    private func clearFocus(in window: NSWindow) {
+        guard !didClearFocus else { return }
+        didClearFocus = true
+
+        if let becameKeyObserver {
+            NotificationCenter.default.removeObserver(becameKeyObserver)
+            self.becameKeyObserver = nil
+        }
+
+        // SwiftUI installs its initial first responder during the window's
+        // attach/appearance pass, after the key notification. A short delay
+        // lands after that pass without being noticeable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak window] in
+            window?.makeFirstResponder(nil)
+        }
+    }
+
+    deinit {
+        becameKeyObserver.map(NotificationCenter.default.removeObserver)
     }
 }

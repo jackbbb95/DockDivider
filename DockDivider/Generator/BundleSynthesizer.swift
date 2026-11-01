@@ -124,39 +124,39 @@ enum BundleSynthesizer {
         NSWorkspace.shared.noteFileSystemChanged(url.path)
     }
 
-    /// Strips extended attributes/quarantine, ad-hoc signs the `.app` bundle,
-    /// applies the un-enclosed custom icon, and registers the bundle with
-    /// LaunchServices.
-    ///
-    /// - Note: Bundle creation goes through `BundleStagingService` directly so
-    ///   the signing work happens off the main actor. This synchronous variant
-    ///   exists for repair, which still runs on the main actor.
-    @MainActor
-    static func finalizeAndSignBundle(
-        at appBundleURL: URL,
-        customIcon: NSImage?,
-        registerWithLaunchServices: Bool = true
-    ) {
-        try? BundleStagingService.signBundle(at: appBundleURL)
-        applyCustomIconAndNotify(customIcon, at: appBundleURL)
-
-        if registerWithLaunchServices {
-            BundleStagingService.registerWithLaunchServices(at: appBundleURL)
-        }
-    }
-
     // MARK: - Bundle Repair & Maintenance
 
-    /// Repairs any previously generated divider `.app` bundles on disk (such as bundles
-    /// created while the app was sandboxed or with `LSBackgroundOnly` in `Info.plist`, or
-    /// whose orientation needs to flip when the user moves their Dock between Bottom and Left/Right)
-    /// so dividers already placed in the user's Dock work cleanly without needing to be re-dragged.
-    @MainActor
-    static func repairExistingBundles(in directories: [URL], excluding excludedURL: URL? = nil) {
+    /// One bundle's pending repair work, computed away from the main actor.
+    ///
+    /// The plan holds Foundation values only: plist and model inspection happen
+    /// during the scan, while icon rendering and IconServices application stay
+    /// on the main actor in `applyRepair`.
+    nonisolated struct DividerBundleRepairPlan: Sendable {
+        let bundleURL: URL
+        let repairedPlistData: Data?
+        /// The model with its orientation updated, when the Dock moved.
+        let updatedModel: DividerModel?
+        /// The bundle's current artwork, reused when no new icon was rendered.
+        let existingIconData: Data?
+        let latestRunnerURL: URL?
+        let copyRunner: Bool
+        let writeMarker: Bool
+    }
+
+    /// Scans the given folders and returns the bundles that need repair.
+    ///
+    /// This is pure filesystem and JSON work so callers can run it off the main
+    /// actor. A large storage folder therefore costs a background scan instead
+    /// of blocking launch or activation.
+    nonisolated static func repairPlans(
+        in directories: [URL],
+        excluding excludedURL: URL? = nil
+    ) -> [DividerBundleRepairPlan] {
         let fileManager = FileManager.default
         let latestRunnerURL = BundleStagingService.locateRunnerExecutable()
         let systemOrientation = DividerOrientation.currentSystemDockOrientation
         let excludedPath = excludedURL?.standardizedFileURL.path
+        var plans: [DividerBundleRepairPlan] = []
 
         for directory in directories {
             guard let items = try? fileManager.contentsOfDirectory(
@@ -173,8 +173,8 @@ enum BundleSynthesizer {
                     continue
                 }
 
-                // Never touch the temporary pre-staged bundle managed by AppState
-                if let excludedPath = excludedPath,
+                // Never touch the temporary pre-staged bundle managed by AppState.
+                if let excludedPath,
                    itemURL.standardizedFileURL.path == excludedPath {
                     continue
                 }
@@ -194,43 +194,37 @@ enum BundleSynthesizer {
                     continue
                 }
 
-                var needsPlistRepair = false
+                var repairedPlistData: Data?
                 if let plistData = try? Data(contentsOf: infoPlistURL),
-                   var plist = (try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil)) as? [String: Any] {
-                    if plist["LSBackgroundOnly"] != nil || plist["CFBundleIconFile"] != nil || plist["NSAppleEventsUsageDescription"] == nil {
-                        needsPlistRepair = true
-                        plist.removeValue(forKey: "LSBackgroundOnly")
-                        plist.removeValue(forKey: "CFBundleIconFile")
-                        plist["LSUIElement"] = true
-                        plist["NSAppleEventsUsageDescription"] = "Allows Dock Divider to perform Finder actions such as opening the Trash."
-                        if let updatedData = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) {
-                            try? updatedData.write(to: infoPlistURL)
-                        }
-                    }
+                   var plist = (try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil)) as? [String: Any],
+                   plist["LSBackgroundOnly"] != nil
+                    || plist["CFBundleIconFile"] != nil
+                    || plist["NSAppleEventsUsageDescription"] == nil {
+                    plist.removeValue(forKey: "LSBackgroundOnly")
+                    plist.removeValue(forKey: "CFBundleIconFile")
+                    plist["LSUIElement"] = true
+                    plist["NSAppleEventsUsageDescription"] = "Allows Dock Divider to perform Finder actions such as opening the Trash."
+                    repairedPlistData = try? PropertyListSerialization.data(
+                        fromPropertyList: plist,
+                        format: .xml,
+                        options: 0
+                    )
                 }
 
-                var needsOrientationUpdate = false
-                var updatedIconImage: NSImage? = nil
+                var updatedModel: DividerModel?
                 if let modelData = try? Data(contentsOf: modelURL),
                    var savedModel = try? JSONDecoder().decode(DividerModel.self, from: modelData) {
-                    // Bundles written by DockDivider keep artwork in `CustomImage.png`
-                    // and omit the bytes from JSON. Hydrate the image before any
-                    // repair that needs to re-render the icon.
+                    // Bundles written by DockDivider keep artwork in
+                    // `CustomImage.png` and omit the bytes from JSON. Hydrate
+                    // the image before a repair re-renders the icon.
                     if savedModel.style == .image, savedModel.imageData == nil {
                         savedModel.imageData = try? Data(contentsOf: customImageURL)
                     }
 
                     if (savedModel.style == .line || savedModel.style == .dashed),
                        savedModel.orientation != systemOrientation {
-                        needsOrientationUpdate = true
                         savedModel.orientation = systemOrientation
-                        if let newIconData = IconRenderer.renderIconData(for: savedModel) {
-                            try? newIconData.write(to: iconURL)
-                            updatedIconImage = IconRenderer.renderNSImage(for: savedModel, size: CGSize(width: 256, height: 256))
-                            if let updatedModelData = try? JSONEncoder().encode(savedModel.withoutEmbeddedImageData()) {
-                                try? updatedModelData.write(to: modelURL)
-                            }
-                        }
+                        updatedModel = savedModel
                     }
                 }
 
@@ -244,32 +238,89 @@ enum BundleSynthesizer {
                     && latestRunnerURL != nil
                     && marker?.runnerVersion != BundleMarker.currentRunnerVersion
 
-                // Only re-sign and re-apply custom icon if the bundle actually needed migration/repair
-                guard needsPlistRepair || needsOrientationUpdate || missingIconFork || needsRunnerUpdate else {
+                guard repairedPlistData != nil
+                        || updatedModel != nil
+                        || missingIconFork
+                        || needsRunnerUpdate else {
                     continue
                 }
 
-                if let latestRunnerURL = latestRunnerURL {
-                    try? fileManager.removeItem(at: execURL)
-                    try? fileManager.copyItem(at: latestRunnerURL, to: execURL)
-                    try? fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: execURL.path)
-                }
-
-                let customIcon: NSImage? = updatedIconImage ?? {
-                    guard let iconData = try? Data(contentsOf: iconURL) else { return nil }
-                    return NSImage(data: iconData)
-                }()
-
-                // Migrate legacy bundles to the marker format, and refresh the
-                // marker when a marked bundle's runner was upgraded.
-                if !hasMarker
-                    || (marker?.runnerVersion != BundleMarker.currentRunnerVersion
-                        && needsRunnerUpdate) {
-                    try? BundleMarker.write(BundleMarker.makeCurrent(), to: itemURL)
-                }
-
-                finalizeAndSignBundle(at: itemURL, customIcon: customIcon)
+                plans.append(
+                    DividerBundleRepairPlan(
+                        bundleURL: itemURL,
+                        repairedPlistData: repairedPlistData,
+                        updatedModel: updatedModel,
+                        existingIconData: try? Data(contentsOf: iconURL),
+                        latestRunnerURL: latestRunnerURL,
+                        copyRunner: latestRunnerURL != nil,
+                        writeMarker: !hasMarker || needsRunnerUpdate
+                    )
+                )
             }
         }
+
+        return plans
+    }
+
+    /// Applies one repair plan.
+    ///
+    /// Icon rendering and `NSWorkspace.setIcon` stay on the main actor because
+    /// AppKit and IconServices are not thread-safe; file writes, the runner
+    /// copy, and `codesign` run in a background task.
+    @MainActor
+    static func applyRepair(_ plan: DividerBundleRepairPlan) async {
+        let iconURL = plan.bundleURL.appendingPathComponent("Contents/Resources/AppIcon.icns")
+        let modelURL = plan.bundleURL.appendingPathComponent("Contents/Resources/DividerModel.json")
+
+        var renderedIconData: Data?
+        var customIcon: NSImage?
+        if let model = plan.updatedModel {
+            renderedIconData = IconRenderer.renderIconData(for: model)
+            if renderedIconData != nil {
+                customIcon = IconRenderer.renderNSImage(
+                    for: model,
+                    size: CGSize(width: 256, height: 256)
+                )
+            }
+        }
+        if customIcon == nil, let existingIconData = plan.existingIconData {
+            customIcon = NSImage(data: existingIconData)
+        }
+
+        let infoPlistURL = plan.bundleURL.appendingPathComponent("Contents/Info.plist")
+        let execURL = plan.bundleURL.appendingPathComponent("Contents/MacOS/divider_runner")
+
+        await Task.detached(priority: .utility) {
+            let fileManager = FileManager.default
+
+            if let repairedPlistData = plan.repairedPlistData {
+                try? repairedPlistData.write(to: infoPlistURL)
+            }
+            if let renderedIconData, let model = plan.updatedModel {
+                try? renderedIconData.write(to: iconURL)
+                if let updatedModelData = try? JSONEncoder().encode(model.withoutEmbeddedImageData()) {
+                    try? updatedModelData.write(to: modelURL)
+                }
+            }
+            if plan.copyRunner, let latestRunnerURL = plan.latestRunnerURL {
+                try? fileManager.removeItem(at: execURL)
+                try? fileManager.copyItem(at: latestRunnerURL, to: execURL)
+                try? fileManager.setAttributes(
+                    [.posixPermissions: 0o755],
+                    ofItemAtPath: execURL.path
+                )
+            }
+            if plan.writeMarker {
+                try? BundleMarker.write(BundleMarker.makeCurrent(), to: plan.bundleURL)
+            }
+
+            try? BundleStagingService.signBundle(at: plan.bundleURL)
+        }.value
+
+        applyCustomIconAndNotify(customIcon, at: plan.bundleURL)
+
+        await Task.detached(priority: .utility) {
+            BundleStagingService.registerWithLaunchServices(at: plan.bundleURL)
+        }.value
     }
 }

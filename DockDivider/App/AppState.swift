@@ -369,9 +369,16 @@ final class AppState: ObservableObject {
     // MARK: - Bundle Maintenance & Repair
 
     private func repairExistingDividerBundles() {
-        repairer.repairExistingBundles(
-            in: effectiveStorageDirectory,
-            excluding: staging.storageExclusionURL
-        )
+        let directory = effectiveStorageDirectory
+        let exclusion = staging.storageExclusionURL
+
+        // The scan and signing can take a while in a large folder; keep launch
+        // and activation responsive by running the pass as a task.
+        Task { [weak self] in
+            await self?.repairer.repairExistingBundles(
+                in: directory,
+                excluding: exclusion
+            )
+        }
     }
 }

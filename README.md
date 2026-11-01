@@ -137,7 +137,8 @@ never deletes files without an explicit confirmation.
   security-scoped bookmark.
 - **`StagingController`** — revisioned staging state machine, drag ownership,
   and cleanup of superseded artifacts.
-- **`BundleRepairer`** — updates older DockDivider bundles after app upgrades.
+- **`BundleRepairer`** — throttled repair passes with off-main scanning and
+  signing, keeping launch and activation responsive.
 - **`DraftPersistence`** — saves the last design as `Draft.json` outside
   `UserDefaults`.
 

@@ -13,9 +13,28 @@ import Foundation
 final class BundleRepairer {
 
     private let isEnabled: Bool
+    private let minimumInterval: TimeInterval
+    private let directoriesProvider: @MainActor (URL) -> [URL]
+    private var lastRepairDirectoryPath: String?
+    private var lastRepairDate: Date?
+    private var isRepairing = false
 
-    init(isEnabled: Bool) {
+    /// - Parameters:
+    ///   - isEnabled: `false` in tests and when launch repair is disabled.
+    ///   - minimumInterval: How long to trust a completed pass for the same
+    ///     folder. Activation can fire many times per session; re-signing a
+    ///     large folder on each one would be wasteful.
+    ///   - directoriesProvider: Folders to scan for a storage directory.
+    ///     Tests inject a temporary folder so a pass never touches the real
+    ///     legacy sandbox folder.
+    init(
+        isEnabled: Bool,
+        minimumInterval: TimeInterval = 300,
+        directories: @escaping @MainActor (URL) -> [URL] = BundleRepairer.repairDirectories(for:)
+    ) {
         self.isEnabled = isEnabled
+        self.minimumInterval = minimumInterval
+        self.directoriesProvider = directories
     }
 
     /// Folders that may contain bundles written by older DockDivider builds.
@@ -36,12 +55,33 @@ final class BundleRepairer {
     /// Repairs bundles in the active storage folder and the legacy sandbox
     /// folder. `excludedURL` is the currently staged or dragged bundle, which
     /// must not be rewritten underneath the Dock.
-    func repairExistingBundles(in storageDirectory: URL, excluding excludedURL: URL?) {
-        guard isEnabled else { return }
+    ///
+    /// The scan and signing run off the main actor; only the brief per-bundle
+    /// icon rendering and `NSWorkspace` calls hop back to it. Repeat passes for
+    /// the same folder are throttled by `minimumInterval`.
+    func repairExistingBundles(in storageDirectory: URL, excluding excludedURL: URL?) async {
+        guard isEnabled, !isRepairing else { return }
 
-        BundleSynthesizer.repairExistingBundles(
-            in: Self.repairDirectories(for: storageDirectory),
-            excluding: excludedURL
-        )
+        let directoryPath = StoragePath.canonical(storageDirectory)
+        if lastRepairDirectoryPath == directoryPath,
+           let lastRepairDate,
+           Date().timeIntervalSince(lastRepairDate) < minimumInterval {
+            return
+        }
+
+        isRepairing = true
+        defer { isRepairing = false }
+
+        let directories = directoriesProvider(storageDirectory)
+        let plans = await Task.detached(priority: .utility) {
+            BundleSynthesizer.repairPlans(in: directories, excluding: excludedURL)
+        }.value
+
+        for plan in plans {
+            await BundleSynthesizer.applyRepair(plan)
+        }
+
+        lastRepairDirectoryPath = directoryPath
+        lastRepairDate = Date()
     }
 }

@@ -981,7 +981,7 @@ struct DockDividerTests {
         #expect(markerExists, "The detached shell command never completed")
     }
 
-    @Test @MainActor func testRepairUpdatesOutdatedRunner() throws {
+    @Test @MainActor func testRepairUpdatesOutdatedRunner() async throws {
         guard BundleStagingService.locateRunnerExecutable() != nil else {
             Issue.record("divider_runner was not found in the built products")
             return
@@ -1021,7 +1021,10 @@ struct DockDividerTests {
             ofItemAtPath: execURL.path
         )
 
-        BundleSynthesizer.repairExistingBundles(in: [tempDir])
+        let repairPlans = BundleSynthesizer.repairPlans(in: [tempDir])
+        for plan in repairPlans {
+            await BundleSynthesizer.applyRepair(plan)
+        }
 
         #expect(BundleMarker.read(from: appURL)?.runnerVersion == BundleMarker.currentRunnerVersion)
         // Re-signing rewrites the executable's embedded signature, so compare
@@ -1032,7 +1035,7 @@ struct DockDividerTests {
         #expect(FileManager.default.isExecutableFile(atPath: execURL.path))
     }
 
-    @Test @MainActor func testRepairLeavesUnmarkedLegacyRunnerAlone() throws {
+    @Test @MainActor func testRepairLeavesUnmarkedLegacyRunnerAlone() async throws {
         guard BundleStagingService.locateRunnerExecutable() != nil else {
             Issue.record("divider_runner was not found in the built products")
             return
@@ -1076,12 +1079,126 @@ struct DockDividerTests {
             ofItemAtPath: execURL.path
         )
 
-        BundleSynthesizer.repairExistingBundles(in: [tempDir])
+        let repairPlans = BundleSynthesizer.repairPlans(in: [tempDir])
+        for plan in repairPlans {
+            await BundleSynthesizer.applyRepair(plan)
+        }
 
         // A runner upgrade alone must not pull every legacy bundle into a
         // re-signing pass; another repair will migrate it later.
         #expect(!BundleMarker.exists(at: appURL))
         #expect(try Data(contentsOf: execURL) == staleRunner)
+    }
+
+    @Test @MainActor func testRepairPlansReportsOnlyBundlesThatNeedWork() async throws {
+        guard BundleStagingService.locateRunnerExecutable() != nil else {
+            Issue.record("divider_runner was not found in the built products")
+            return
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var model = DividerModel()
+        model.orientation = DividerOrientation.currentSystemDockOrientation
+
+        guard let iconData = IconRenderer.renderIconData(for: model) else {
+            Issue.record("Failed to generate test icon data")
+            return
+        }
+
+        let appURL = try BundleSynthesizer.createDividerApp(
+            iconData: iconData,
+            config: ActionConfig.none,
+            hoverLabel: "Healthy",
+            model: model,
+            outputDirectory: tempDir,
+            registerWithLaunchServices: false
+        )
+
+        // A bundle written by the current build needs no work.
+        #expect(BundleSynthesizer.repairPlans(in: [tempDir]).isEmpty)
+
+        // An ownership marker from an older runner is enough to plan a repair.
+        guard var marker = BundleMarker.read(from: appURL) else {
+            Issue.record("Expected a bundle marker")
+            return
+        }
+        marker.runnerVersion = "0"
+        try BundleMarker.write(marker, to: appURL)
+
+        let plans = BundleSynthesizer.repairPlans(in: [tempDir])
+        #expect(plans.count == 1)
+        #expect(plans.first?.bundleURL.standardizedFileURL == appURL.standardizedFileURL)
+        #expect(plans.first?.copyRunner == true)
+        #expect(plans.first?.writeMarker == true)
+    }
+
+    @Test @MainActor func testBundleRepairerThrottlesRepeatPasses() async throws {
+        guard BundleStagingService.locateRunnerExecutable() != nil else {
+            Issue.record("divider_runner was not found in the built products")
+            return
+        }
+
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var model = DividerModel()
+        model.orientation = DividerOrientation.currentSystemDockOrientation
+
+        guard let iconData = IconRenderer.renderIconData(for: model) else {
+            Issue.record("Failed to generate test icon data")
+            return
+        }
+
+        let appURL = try BundleSynthesizer.createDividerApp(
+            iconData: iconData,
+            config: ActionConfig.none,
+            hoverLabel: "Throttle",
+            model: model,
+            outputDirectory: tempDir,
+            registerWithLaunchServices: false
+        )
+
+        func markStale() throws {
+            guard var marker = BundleMarker.read(from: appURL) else {
+                Issue.record("Expected a bundle marker")
+                return
+            }
+            marker.runnerVersion = "0"
+            try BundleMarker.write(marker, to: appURL)
+        }
+
+        // The injected provider keeps the pass inside the temporary folder and
+        // away from the real legacy sandbox folder.
+        let directoryOnlyProvider: @MainActor (URL) -> [URL] = { _ in [tempDir] }
+        let repairer = BundleRepairer(
+            isEnabled: true,
+            minimumInterval: 3600,
+            directories: directoryOnlyProvider
+        )
+
+        try markStale()
+        await repairer.repairExistingBundles(in: tempDir, excluding: nil)
+        #expect(BundleMarker.read(from: appURL)?.runnerVersion == BundleMarker.currentRunnerVersion)
+
+        // A second activation inside the interval must not re-scan the folder.
+        try markStale()
+        await repairer.repairExistingBundles(in: tempDir, excluding: nil)
+        #expect(BundleMarker.read(from: appURL)?.runnerVersion == "0")
+
+        // A pass with no throttle still repairs it.
+        let immediateRepairer = BundleRepairer(
+            isEnabled: true,
+            minimumInterval: 0,
+            directories: directoryOnlyProvider
+        )
+        await immediateRepairer.repairExistingBundles(in: tempDir, excluding: nil)
+        #expect(BundleMarker.read(from: appURL)?.runnerVersion == BundleMarker.currentRunnerVersion)
     }
 
     @Test func testBundleSynthesizerCreateNativeSpacerFiles() throws {

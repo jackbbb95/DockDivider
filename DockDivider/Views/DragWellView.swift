@@ -133,17 +133,6 @@ struct DragWellView: View {
 
                     Spacer()
 
-                    Button {
-                        appState.revealStagedBundleInFinder()
-                    } label: {
-                        Image(systemName: "folder")
-                            .font(.title3)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(appState.stagedAppURL == nil)
-                    .help("Reveal the prepared divider in Finder")
-                    .accessibilityLabel("Reveal prepared divider in Finder")
-
                     Image(systemName: "hand.draw")
                         .font(.title2)
                         .foregroundStyle(isHovering ? Color.accentColor : Color.secondary)

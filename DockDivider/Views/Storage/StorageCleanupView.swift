@@ -113,10 +113,6 @@ struct StorageCleanupView: View {
             } else {
                 List(census.unusedItems) { item in
                     HStack(spacing: 10) {
-                        Image(systemName: item.kind == .appBundle ? "app" : "rectangle.dashed")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18)
-
                         VStack(alignment: .leading, spacing: 1) {
                             Text(item.displayName)
                                 .lineLimit(1)
