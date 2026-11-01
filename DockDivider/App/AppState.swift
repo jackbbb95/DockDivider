@@ -26,6 +26,9 @@ nonisolated struct AppEnvironment {
     /// Source of "what is currently in the Dock". Tests inject a known or
     /// unavailable set so they never read the developer's real Dock.
     var liveSet: StorageLiveSet = .currentDock
+    /// Whether a fresh install may show the welcome sheet. Tests disable it so
+    /// a sheet never interferes with window-level assertions.
+    var showsOnboarding: Bool = true
 
     static var live: AppEnvironment {
         AppEnvironment(
@@ -46,10 +49,15 @@ nonisolated struct AppEnvironment {
 @MainActor
 final class AppState: ObservableObject {
 
+    static let onboardingDefaultsKey = "DockDivider.hasSeenWelcome"
+
     // MARK: - Published State
 
     @Published var draft: DividerModel = DividerModel()
     @Published private(set) var storageSummary: StorageSummary? = nil
+
+    /// True until the welcome sheet has been shown once on a fresh install.
+    @Published var isOnboardingPresented: Bool
 
     // MARK: - Collaborators
 
@@ -119,6 +127,8 @@ final class AppState: ObservableObject {
 
     init(environment: AppEnvironment = .live) {
         self.environment = environment
+        self.isOnboardingPresented = environment.showsOnboarding
+            && !environment.userDefaults.bool(forKey: Self.onboardingDefaultsKey)
         self.storageLocation = StorageLocationStore(
             userDefaults: environment.userDefaults,
             applicationSupportDirectory: environment.applicationSupportDirectory
@@ -210,6 +220,14 @@ final class AppState: ObservableObject {
                 self.refreshStorageSummary()
             }
             .store(in: &cancellables)
+    }
+
+    // MARK: - Onboarding
+
+    /// Marks the welcome sheet as seen so it never returns.
+    func completeOnboarding() {
+        isOnboardingPresented = false
+        environment.userDefaults.set(true, forKey: Self.onboardingDefaultsKey)
     }
 
     // MARK: - Storage Directory Management

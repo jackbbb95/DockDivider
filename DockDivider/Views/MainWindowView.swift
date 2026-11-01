@@ -11,7 +11,7 @@ import AppKit
 
 struct MainWindowView: View {
     @EnvironmentObject private var appState: AppState
-    @State private var showingStorageCleanup = false
+    @State private var activeSheet: MainSheet?
 
     // MARK: - Body
 
@@ -75,9 +75,22 @@ struct MainWindowView: View {
         .padding(18)
         .frame(minWidth: 920, idealWidth: 940, maxWidth: .infinity, minHeight: 620, idealHeight: 700, maxHeight: .infinity)
         .background(InitialFocusClearer())
-        .sheet(isPresented: $showingStorageCleanup) {
-            StorageCleanupView()
-                .environmentObject(appState)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .onboarding:
+                OnboardingView()
+                    .environmentObject(appState)
+            case .storageCleanup:
+                StorageCleanupView()
+                    .environmentObject(appState)
+            }
+        }
+        .task {
+            guard appState.isOnboardingPresented else { return }
+            // Let the main window finish its first layout before presenting.
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled, appState.isOnboardingPresented else { return }
+            activeSheet = .onboarding
         }
     }
 
@@ -127,7 +140,7 @@ struct MainWindowView: View {
             Spacer()
 
             Button("Clean Up…") {
-                showingStorageCleanup = true
+                activeSheet = .storageCleanup
             }
             .buttonStyle(.link)
             .font(.caption2)
@@ -170,6 +183,15 @@ struct MainWindowView: View {
                 .fill(Color(nsColor: .controlBackgroundColor).opacity(0.5))
         )
     }
+}
+
+// MARK: - Sheets
+
+private enum MainSheet: String, Identifiable {
+    case onboarding
+    case storageCleanup
+
+    var id: String { rawValue }
 }
 
 // MARK: - Initial Focus

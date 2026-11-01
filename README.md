@@ -37,8 +37,10 @@ bar agent, or background process left behind.
 - **Drag-to-Dock workflow** with revisioned background staging, so an edited
   divider is never dragged with stale content.
 - **Draft persistence** in Application Support, separate from `UserDefaults`.
-- **Storage management** showing generated item count, disk usage, unused
-  bundles, and a confirmation-based cleanup sheet.
+- **First-run onboarding** with a one-time welcome sheet and starter presets
+  (Line, Dashed, Dot, Label, Spacer).
+- **Storage management** showing total disk usage and a confirmation-based
+  cleanup sheet.
 - **Accessibility** labels, keyboard-reachable drag fallback, and
   validation-before-drag for incomplete configurations.
 

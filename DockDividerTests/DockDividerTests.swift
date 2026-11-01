@@ -1529,6 +1529,68 @@ struct DockDividerTests {
         #expect(BundleMarker.isDockDividerBundle(at: unrelatedAppURL) == false)
     }
 
+    // MARK: - Onboarding & Presets
+
+    @Test func testDividerPresetsKeepBehaviorAndSetStyle() {
+        for preset in DividerPreset.allCases {
+            let behavior = ActionConfig(actionType: .systemAction, systemAction: .hideOthers)
+            var model = DividerModel(
+                style: .image,
+                hoverLabel: "KEEP",
+                actionConfig: behavior
+            )
+            model.spacerSize = .flex
+
+            preset.apply(to: &model)
+
+            #expect(model.style == preset.resultingStyle)
+            #expect(model.hoverLabel == "KEEP")
+            #expect(model.actionConfig == behavior)
+            #expect(model.spacerSize == .flex)
+        }
+
+        var labelModel = DividerModel(style: .image)
+        DividerPreset.label.apply(to: &labelModel)
+        #expect(labelModel.labelText == "DEV")
+
+        var dotModel = DividerModel(style: .image)
+        DividerPreset.dot.apply(to: &dotModel)
+        #expect(dotModel.thickness == 3.0)
+    }
+
+    @Test @MainActor func testOnboardingShowsOnlyUntilCompleted() throws {
+        let harness = try AppStateTestHarness(showsOnboarding: true)
+        defer { harness.tearDown() }
+
+        #expect(harness.appState.isOnboardingPresented)
+
+        harness.appState.completeOnboarding()
+        #expect(harness.appState.isOnboardingPresented == false)
+        #expect(harness.defaults.bool(forKey: AppState.onboardingDefaultsKey))
+
+        let reloaded = AppState(
+            environment: AppEnvironment(
+                userDefaults: harness.defaults,
+                applicationSupportDirectory: harness.root.appendingPathComponent("ApplicationSupport", isDirectory: true),
+                repairOnLaunch: false,
+                stagesOnLaunch: false,
+                stagesOnDraftChanges: false,
+                registerWithLaunchServices: false,
+                stagingDebounce: 0,
+                liveSet: .unavailable,
+                showsOnboarding: true
+            )
+        )
+        #expect(reloaded.isOnboardingPresented == false)
+    }
+
+    @Test @MainActor func testOnboardingStaysHiddenWhenDisabled() throws {
+        let harness = try AppStateTestHarness(showsOnboarding: false)
+        defer { harness.tearDown() }
+
+        #expect(harness.appState.isOnboardingPresented == false)
+    }
+
     // MARK: - UI & Control Tests
 
     @Test func testSegmentedControlsSwitchWithoutViewUpdateWarnings() async throws {
@@ -1746,7 +1808,7 @@ private struct AppStateTestHarness {
     let defaults: UserDefaults
     let appState: AppState
 
-    init() throws {
+    init(showsOnboarding: Bool = false) throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DockDividerTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -1766,7 +1828,8 @@ private struct AppStateTestHarness {
                 stagesOnDraftChanges: false,
                 registerWithLaunchServices: false,
                 stagingDebounce: 0,
-                liveSet: .unavailable
+                liveSet: .unavailable,
+                showsOnboarding: showsOnboarding
             )
         )
     }
