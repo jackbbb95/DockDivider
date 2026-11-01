@@ -79,6 +79,34 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   CODE_SIGNING_ALLOWED=NO
 ```
 
+### Release build
+
+Release builds use `ARCHS_STANDARD` (`arm64` + `x86_64`) and hardened runtime.
+Use a generic destination: a `platform=macOS` destination builds only the host
+architecture even in Release.
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild -project DockDivider.xcodeproj \
+  -scheme DockDivider \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  build
+```
+
+Both the app and its embedded `divider_runner` should be universal:
+
+```bash
+lipo -info …/DockDivider.app/Contents/MacOS/DockDivider
+lipo -info …/DockDivider.app/Contents/Resources/divider_runner
+```
+
+Distribution signing and notarization need a Developer ID Application identity
+and `notarytool` credentials, which are not part of the repository. Generated
+divider bundles are ad-hoc signed separately and carry Finder icon metadata
+after signing, so `codesign --verify` succeeds while `codesign --verify
+--deep --strict` reports that metadata.
+
 ---
 
 ## Storage and safety
