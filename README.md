@@ -47,13 +47,29 @@ bar agent, or background process left behind.
 
 ## Requirements
 
-- macOS 13.0 (Ventura) or later
-- Xcode 16.0 or later (the project uses filesystem-synchronized groups and the Swift 5 language mode)
+- macOS 13.0 (Ventura) or later on Apple silicon or Intel
+- Xcode 16.0 or later to build from source (the project uses
+  filesystem-synchronized groups and the Swift 5 language mode)
 - No third-party dependencies
 
 DockDivider is distributed directly, outside the Mac App Store. The app is not
 sandboxed because it creates and repairs executable bundles in a folder you
 choose, and it ad-hoc signs each generated bundle so the Dock can launch it.
+
+---
+
+## Install
+
+1. Download the latest `DockDivider-x.y.z.dmg` from
+   [GitHub Releases](https://github.com/jackbbb95/DockDivider/releases).
+2. Open the DMG and drag **DockDivider** into **Applications**.
+3. Launch it. Official release builds are signed with a Developer ID and
+   notarized, so Gatekeeper allows the first launch without a bypass.
+
+If you build the app yourself, it is unsigned and macOS may require confirming
+it in **System Settings > Privacy & Security**. Actions that drive System
+Events (Toggle Dark Mode, Toggle Mute) may ask for Automation permission the
+first time; DockDivider does not need Accessibility or Full Disk Access.
 
 ---
 
@@ -106,6 +122,12 @@ divider bundles are ad-hoc signed separately and carry Finder icon metadata
 after signing, so `codesign --verify` succeeds while `codesign --verify
 --deep --strict` reports that metadata.
 
+### Publishing
+
+See [docs/RELEASE.md](docs/RELEASE.md) for notarization setup, the
+`scripts/release.sh` command, verification steps, and the GitHub release
+checklist. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
 ---
 
 ## Storage and safety
@@ -151,6 +173,26 @@ deleting the old folder.
 
 DockDivider never edits `com.apple.dock.plist`, never runs `killall Dock`, and
 never deletes files without an explicit confirmation.
+
+---
+
+## Uninstall
+
+1. Remove each DockDivider tile from the Dock: right-click it and choose
+   **Options > Remove from Dock**.
+2. Quit DockDivider and move it from **Applications** to the Trash.
+3. Remove generated data if you no longer want it. The storage footer shows the
+   active folder (usually `~/Library/Application Support/DockDividers`). The
+   last draft lives beside it:
+   ```bash
+   rm -rf "$HOME/Library/Application Support/DockDividers"
+   rm -f  "$HOME/Library/Application Support/Draft.json" \
+          "$HOME/Library/Application Support/DraftImage.png"
+   defaults delete me.bogle.DockDivider
+   ```
+
+Use **Clean Up…** first if you want to review which bundles the Dock still
+references.
 
 ---
 
