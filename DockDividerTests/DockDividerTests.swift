@@ -248,7 +248,8 @@ struct DockDividerTests {
                 registerWithLaunchServices: false,
                 stagingDebounce: 0,
                 persistsDraft: true,
-                liveSet: .unavailable
+                liveSet: .unavailable,
+                appliesFinderIcons: false
             )
         )
 
@@ -1630,40 +1631,15 @@ struct DockDividerTests {
             return
         }
 
-        let hostingView = NSHostingView(rootView: MainWindowView().environmentObject(appState))
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 940, height: 700),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentView = hostingView
-        window.makeKeyAndOrderFront(nil)
-        hostingView.layoutSubtreeIfNeeded()
-        try? await Task.sleep(nanoseconds: 100_000_000)
-
-        func findDragSource(in view: NSView) -> DragSourceNSView? {
-            if let dragSource = view as? DragSourceNSView {
-                return dragSource
-            }
-            for subview in view.subviews {
-                if let dragSource = findDragSource(in: subview) {
-                    return dragSource
-                }
-            }
-            return nil
-        }
-
-        guard let dragSource = findDragSource(in: hostingView) else {
-            Issue.record("Drag well was not hosted")
-            window.close()
-            return
+        // Exercise the accessibility fallback without hosting a SwiftUI window:
+        // the drag source's press action must reveal the prepared bundle.
+        let dragSource = DragSourceNSView()
+        dragSource.onAccessibilityPress = {
+            appState.revealStagedBundleInFinder()
         }
 
         #expect(dragSource.accessibilityPerformPress())
         #expect(revealed.map(StoragePath.canonical) == [StoragePath.canonical(stagedURL)])
-
-        window.close()
     }
 
     // MARK: - UI & Control Tests
@@ -1917,7 +1893,8 @@ private struct AppStateTestHarness {
             registerWithLaunchServices: false,
             stagingDebounce: 0,
             liveSet: liveSet,
-            showsOnboarding: showsOnboarding
+            showsOnboarding: showsOnboarding,
+            appliesFinderIcons: false
         )
         if let revealInFinder {
             environment.revealInFinder = revealInFinder

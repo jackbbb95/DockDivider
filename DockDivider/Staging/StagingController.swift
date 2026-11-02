@@ -31,6 +31,7 @@ final class StagingController: ObservableObject {
     // MARK: - Private State
 
     private let registerWithLaunchServices: Bool
+    private let appliesFinderIcons: Bool
 
     /// Last successfully published artifact. Kept separately from
     /// `stagingState` so a newer staging pass can still clean up the bundle it
@@ -52,8 +53,9 @@ final class StagingController: ObservableObject {
 
     // MARK: - Init
 
-    init(registerWithLaunchServices: Bool) {
+    init(registerWithLaunchServices: Bool, appliesFinderIcons: Bool = true) {
         self.registerWithLaunchServices = registerWithLaunchServices
+        self.appliesFinderIcons = appliesFinderIcons
     }
 
     // MARK: - Derived State
@@ -293,7 +295,9 @@ final class StagingController: ObservableObject {
             }
 
             if kind == .appBundle, let previewImage = pendingPreviewImages.removeValue(forKey: revision) {
-                BundleSynthesizer.applyCustomIconAndNotify(previewImage, at: url)
+                if appliesFinderIcons {
+                    BundleSynthesizer.applyCustomIconAndNotify(previewImage, at: url)
+                }
             } else {
                 BundleSynthesizer.notifyFileSystemChanged(at: url)
             }

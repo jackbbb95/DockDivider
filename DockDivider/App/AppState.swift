@@ -37,6 +37,9 @@ nonisolated struct AppEnvironment {
     var revealInFinder: @MainActor (_ urls: [URL]) -> Void = { urls in
         NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
+    /// Whether a staged app bundle should receive a Finder custom icon.
+    /// Tests disable this so IconServices never runs inside the test host.
+    var appliesFinderIcons: Bool = true
 
     @MainActor
     static func defaultStorageMoveAlert(_ oldDirectory: URL, _ itemCount: Int) {
@@ -55,17 +58,24 @@ nonisolated struct AppEnvironment {
     }
 
     static var live: AppEnvironment {
-        AppEnvironment(
+        // The unit-test host must not stage into the real storage folder or
+        // drive IconServices; its tests use an isolated AppEnvironment.
+        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
+        return AppEnvironment(
             userDefaults: .standard,
             applicationSupportDirectory: FileManager.default.urls(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
             ).first!,
-            repairOnLaunch: true,
-            stagesOnLaunch: true,
-            stagesOnDraftChanges: true,
-            registerWithLaunchServices: true,
-            stagingDebounce: 0.25
+            repairOnLaunch: !isRunningTests,
+            stagesOnLaunch: !isRunningTests,
+            stagesOnDraftChanges: !isRunningTests,
+            registerWithLaunchServices: !isRunningTests,
+            stagingDebounce: 0.25,
+            persistsDraft: !isRunningTests,
+            showsOnboarding: !isRunningTests,
+            appliesFinderIcons: !isRunningTests
         )
     }
 }
@@ -158,7 +168,8 @@ final class AppState: ObservableObject {
             applicationSupportDirectory: environment.applicationSupportDirectory
         )
         self.staging = StagingController(
-            registerWithLaunchServices: environment.registerWithLaunchServices
+            registerWithLaunchServices: environment.registerWithLaunchServices,
+            appliesFinderIcons: environment.appliesFinderIcons
         )
         self.repairer = BundleRepairer(isEnabled: environment.repairOnLaunch)
 
