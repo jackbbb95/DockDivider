@@ -11,6 +11,10 @@ import AppKit
 import ImageIO
 @testable import DockDivider
 
+// Staging tests drive AppKit/IconServices and `codesign` from the main actor.
+// Running the suite in parallel lets those passes contend on slower CI runners,
+// which can starve the test host and produce cascading timeouts.
+@Suite(.serialized)
 @MainActor
 struct DockDividerTests {
 
