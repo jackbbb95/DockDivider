@@ -13,9 +13,30 @@ DerivedData/
 *.dSYM.zip
 *.dSYM
 *.profraw
+*.xcresult
 
 ## Built binaries and application bundles
 *.app
+*.dmg
+*.zip
+
+## Xcode project state
+*.xccheckout
+*.xcscmblueprint
+
+# Signing and notarization secrets — never commit these
+*.p12
+*.cer
+*.provisionprofile
+*.mobileprovision
+*.pem
+*.key
+.env
+.env.*
+
+# Editors
+.vscode/
+.idea/
 
 # Swift Package Manager
 .build/
