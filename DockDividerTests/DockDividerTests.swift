@@ -11,6 +11,10 @@ import AppKit
 import ImageIO
 @testable import DockDivider
 
+// Staging tests launch `codesign` subprocesses and apply Finder icons through
+// IconServices. Running them concurrently can crash the AppKit test host on CI,
+// so keep the suite serialized.
+@Suite(.serialized)
 @MainActor
 struct DockDividerTests {
 
