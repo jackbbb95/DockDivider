@@ -7,6 +7,12 @@ DockDivider generates self-contained `.app` bundles and native Dock spacer
 files. Drag one from the app window into your Dock; there is no daemon, menu
 bar agent, or background process left behind.
 
+<p align="center">
+  <a href="docs/images/cover.png">
+    <img src="docs/images/cover.png" alt="DockDivider — a tidier Dock, in seconds" width="100%">
+  </a>
+</p>
+
 ![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-blue)
 ![Swift 5](https://img.shields.io/badge/Swift-5%20language%20mode-orange)
 ![Xcode 16+](https://img.shields.io/badge/Xcode-16%2B-blue)
@@ -42,6 +48,37 @@ bar agent, or background process left behind.
   cleanup sheet.
 - **Accessibility** labels, keyboard-reachable drag fallback, and
   validation-before-drag for incomplete configurations.
+
+---
+
+## Screenshots
+
+Click any screenshot to open it full size.
+
+### Design it, see it live
+
+[![Native-style line divider with a live Dock preview](docs/images/screenshot-line.png)](docs/images/screenshot-line.png)
+
+**Native-style lines.** Thickness, height, opacity, tint, and vertical offset,
+previewed on a real Dock surface, with an optional app and URL launcher on click.
+
+[![SF Symbol label with a hover tooltip](docs/images/screenshot-label.png)](docs/images/screenshot-label.png)
+
+**Labels and SF Symbols.** A monogram or any SF Symbol, with a native hover
+tooltip and a built-in system action.
+
+### More than a divider
+
+|  |  |
+| :---: | :---: |
+| [![Custom image divider using the DockDivider artwork](docs/images/screenshot-image.png)](docs/images/screenshot-image.png) | [![Native spacer used as an invisible app and URL launcher](docs/images/screenshot-spacer.png)](docs/images/screenshot-spacer.png) |
+| **Custom artwork.** PNG, SVG, JPEG, HEIC, or TIFF with scale, offset, opacity, and corner-radius controls. | **Spacers and invisible launchers.** A true native Dock gap, or an invisible app and URL launcher when a click action is attached. |
+| [![Side Dock preview with a shell command click action](docs/images/screenshot-side-dock.png)](docs/images/screenshot-side-dock.png) | [![First-run welcome sheet](docs/images/screenshot-onboarding.png)](docs/images/screenshot-onboarding.png) |
+| **Bottom or side Docks.** Dock-aware orientation, custom tints, and click actions such as shell commands and Apple Shortcuts. | **First-run welcome.** A one-time walkthrough explains the drag-to-Dock model. |
+
+### Divider styles
+
+[![Six divider styles: line, dashed, dot, label, spacer, and image](docs/images/styles.png)](docs/images/styles.png)
 
 ---
 
