@@ -38,12 +38,20 @@ jobs:
             test \
             CODE_SIGNING_ALLOWED=NO
 
+      - name: Collect crash logs
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/crashlogs"
+          cp "$HOME/Library/Logs/DiagnosticReports/"*.ips "$RUNNER_TEMP/crashlogs/" 2>/dev/null || true
+
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: ${{ runner.temp }}/DockDividerTests.xcresult
+          path: |
+            ${{ runner.temp }}/DockDividerTests.xcresult
+            ${{ runner.temp }}/crashlogs
           retention-days: 7
 
       - name: Build universal Release

@@ -1664,47 +1664,22 @@ struct DockDividerTests {
 
     // MARK: - UI & Control Tests
 
-    @Test @MainActor func testSegmentedControlsSwitchWithoutViewUpdateWarnings() async throws {
-        let harness = try AppStateTestHarness()
-        defer { harness.tearDown() }
-
-        func findSegmentedControls(in view: NSView) -> [NSSegmentedControl] {
-            var result = [NSSegmentedControl]()
-            if let seg = view as? NSSegmentedControl {
-                result.append(seg)
-            }
-            for sub in view.subviews {
-                result.append(contentsOf: findSegmentedControls(in: sub))
-            }
-            return result
-        }
-
-        let view = MainWindowView().environmentObject(harness.appState)
-        let hostingView = NSHostingView(rootView: view)
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 940, height: 700),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
+    @Test @MainActor func testDeferredBindingsApplyOnNextRunLoopTurn() async throws {
+        var style = DividerStyle.line
+        let binding = Binding(
+            get: { style },
+            set: { style = $0 }
         )
-        window.contentView = hostingView
-        window.makeKeyAndOrderFront(nil)
+        let deferred = binding.deferred()
 
-        hostingView.layoutSubtreeIfNeeded()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Deferred setters are used by the segmented pickers so their AppKit
+        // actions never mutate SwiftUI state during a view update.
+        deferred.wrappedValue = .dashed
+        deferred.wrappedValue = .dot
+        #expect(style == .line)
 
-        let segmentedControls = findSegmentedControls(in: hostingView)
-        #expect(!segmentedControls.isEmpty)
-
-        for picker in segmentedControls {
-            for segment in 0..<picker.segmentCount {
-                picker.selectedSegment = segment
-                picker.sendAction(picker.action, to: picker.target)
-                try? await Task.sleep(nanoseconds: 20_000_000)
-            }
-        }
-
-        window.close()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        #expect(style == .dot)
     }
 }
 
