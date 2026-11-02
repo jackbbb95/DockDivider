@@ -53,28 +53,21 @@ bar agent, or background process left behind.
 
 ## Screenshots
 
-Click any screenshot to open it full size.
-
 ### Design it, see it live
-
-[![Native-style line divider with a live Dock preview](docs/images/screenshot-line.png)](docs/images/screenshot-line.png)
 
 **Native-style lines.** Thickness, height, opacity, tint, and vertical offset,
 previewed on a real Dock surface, with an optional app and URL launcher on click.
 
-[![SF Symbol label with a hover tooltip](docs/images/screenshot-label.png)](docs/images/screenshot-label.png)
-
-**Labels and SF Symbols.** A monogram or any SF Symbol, with a native hover
-tooltip and a built-in system action.
+[![Native-style line divider with a live Dock preview](docs/images/screenshot-line.png)](docs/images/screenshot-line.png)
 
 ### More than a divider
 
 |  |  |
 | :---: | :---: |
-| [![Custom image divider using the DockDivider artwork](docs/images/screenshot-image.png)](docs/images/screenshot-image.png) | [![Native spacer used as an invisible app and URL launcher](docs/images/screenshot-spacer.png)](docs/images/screenshot-spacer.png) |
-| **Custom artwork.** PNG, SVG, JPEG, HEIC, or TIFF with scale, offset, opacity, and corner-radius controls. | **Spacers and invisible launchers.** A true native Dock gap, or an invisible app and URL launcher when a click action is attached. |
-| [![Side Dock preview with a shell command click action](docs/images/screenshot-side-dock.png)](docs/images/screenshot-side-dock.png) | [![First-run welcome sheet](docs/images/screenshot-onboarding.png)](docs/images/screenshot-onboarding.png) |
-| **Bottom or side Docks.** Dock-aware orientation, custom tints, and click actions such as shell commands and Apple Shortcuts. | **First-run welcome.** A one-time walkthrough explains the drag-to-Dock model. |
+| [![SF Symbol label with a hover tooltip](docs/images/screenshot-label.png)](docs/images/screenshot-label.png) | [![Custom image divider using the DockDivider artwork](docs/images/screenshot-image.png)](docs/images/screenshot-image.png) |
+| **Labels and SF Symbols.** A monogram or any SF Symbol, with a native hover tooltip and a built-in system action. | **Custom artwork.** PNG, SVG, JPEG, HEIC, or TIFF with scale, offset, opacity, and corner-radius controls. |
+| [![Native spacer used as an invisible app and URL launcher](docs/images/screenshot-spacer.png)](docs/images/screenshot-spacer.png) | [![Side Dock preview with a shell command click action](docs/images/screenshot-side-dock.png)](docs/images/screenshot-side-dock.png) |
+| **Spacers and invisible launchers.** A true native Dock gap, or an invisible app and URL launcher when a click action is attached. | **Bottom or side Docks.** Dock-aware orientation, custom tints, and click actions such as shell commands and Apple Shortcuts. |
 
 ### Divider styles
 
