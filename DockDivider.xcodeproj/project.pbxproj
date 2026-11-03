@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		1D85D7C8309136F300D34513 /* divider_runner in CopyFiles */ = {isa = PBXBuildFile; fileRef = 1D85D7BE309134AF00D34513 /* divider_runner */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		1D85D7C8309136F300D34513 /* divider_runner in CopyFiles */ = {isa = PBXBuildFile; fileRef = 1D85D7BE309134AF00D34513 /* divider_runner */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
