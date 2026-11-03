@@ -31,7 +31,9 @@ struct AppEnvironment {
     var showsOnboarding: Bool = true
     /// Presents the storage-move warning. Tests inject a recorder instead of
     /// putting a modal NSAlert on screen.
-    var presentStorageMoveAlert: @MainActor (_ oldDirectory: URL, _ itemCount: Int) -> Void = AppEnvironment.defaultStorageMoveAlert
+    var presentStorageMoveAlert: @MainActor (_ oldDirectory: URL, _ itemCount: Int) -> Void = { oldDirectory, itemCount in
+        AppEnvironment.defaultStorageMoveAlert(oldDirectory, itemCount)
+    }
     /// Reveals files in Finder. Tests inject a recorder so they never open
     /// Finder windows.
     var revealInFinder: @MainActor (_ urls: [URL]) -> Void = { urls in

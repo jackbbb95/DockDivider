@@ -38,7 +38,7 @@ final class BundleRepairer {
     }
 
     /// Folders that may contain bundles written by older DockDivider builds.
-    static func repairDirectories(for storageDirectory: URL) -> [URL] {
+    nonisolated static func repairDirectories(for storageDirectory: URL) -> [URL] {
         var directories: [URL] = [storageDirectory]
         let homeDirectory = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
         let legacySandboxDirectory = homeDirectory.appendingPathComponent(
