@@ -48,6 +48,10 @@ bar agent, or background process left behind.
   cleanup sheet.
 - **Accessibility** labels, keyboard-reachable drag fallback, and
   validation-before-drag for incomplete configurations.
+- **Tooltips are always visible.** macOS shows a hover tooltip pill for every
+  divider app bundle. Clearing the tooltip text does not remove the pill; it
+  only makes it blank. Only a true native spacer (no click action or tooltip)
+  avoids the tooltip entirely.
 
 ---
 
@@ -227,28 +231,6 @@ never deletes files without an explicit confirmation.
 
 Use **Clean Up…** first if you want to review which bundles the Dock still
 references.
-
----
-
-## Architecture
-
-- **`DockDivider.app`** — SwiftUI editor, live preview, icon renderer, bundle
-  synthesizer, storage maintenance, and drag staging.
-- **`divider_runner`** — a small standalone Mach-O executable embedded in each
-  generated bundle. It reads `ActionConfig.json`, performs the configured
-  action, and exits. The shared action model is compiled from
-  `Shared/ActionConfig.swift` into both targets so they cannot drift.
-- **`StorageLocationStore`** — owns the selected storage folder and its
-  security-scoped bookmark.
-- **`StagingController`** — revisioned staging state machine, drag ownership,
-  and cleanup of superseded artifacts.
-- **`BundleRepairer`** — throttled repair passes with off-main scanning and
-  signing, keeping launch and activation responsive.
-- **`DraftPersistence`** — saves the last design as `Draft.json` outside
-  `UserDefaults`.
-
-The model layer (`DividerModel`, `ActionConfig`) is pure Foundation. AppKit and
-SwiftUI helpers live in separate extensions or views.
 
 ---
 
