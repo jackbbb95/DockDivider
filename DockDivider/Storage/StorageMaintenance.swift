@@ -87,13 +87,7 @@ enum StorageMaintenance {
         var items: [StorageItem] = []
 
         for entry in entries {
-            let kind: StorageItem.Kind
-            if entry.pathExtension == "app" {
-                guard BundleMarker.isDockDividerBundle(at: entry) else { continue }
-                kind = .appBundle
-            } else if Self.spacerExtensions.contains(entry.pathExtension) {
-                kind = .nativeSpacer
-            } else {
+            guard let kind = managedKind(of: entry) else {
                 // README.txt, other user files, and unrelated bundles are never
                 // inspected or removed.
                 continue
@@ -154,15 +148,29 @@ enum StorageMaintenance {
         }
 
         return entries.reduce(into: 0) { count, entry in
-            let isManaged: Bool
-            if entry.pathExtension == "app" {
-                isManaged = BundleMarker.isDockDividerBundle(at: entry)
-            } else {
-                isManaged = Self.spacerExtensions.contains(entry.pathExtension)
+            guard managedKind(of: entry) != nil,
+                  livePaths.contains(StoragePath.canonical(entry)) else {
+                return
             }
-            guard isManaged, livePaths.contains(StoragePath.canonical(entry)) else { return }
             count += 1
         }
+    }
+
+    // MARK: - Item Classification
+
+    /// Returns the managed kind for a directory entry, or `nil` when the entry
+    /// is not something DockDivider created.
+    ///
+    /// Census and the storage-move warning share this rule so an item can never
+    /// be counted as live in one place and skipped as unmanaged in the other.
+    private static func managedKind(of entry: URL) -> StorageItem.Kind? {
+        if entry.pathExtension == "app" {
+            return BundleMarker.isDockDividerBundle(at: entry) ? .appBundle : nil
+        }
+        if spacerExtensions.contains(entry.pathExtension) {
+            return .nativeSpacer
+        }
+        return nil
     }
 
     // MARK: - Cleanup
@@ -189,14 +197,22 @@ enum StorageMaintenance {
 
     // MARK: - Size Helpers
 
+    private static let allocatedSizeKeys: Set<URLResourceKey> = [
+        .totalFileAllocatedSizeKey,
+        .fileAllocatedSizeKey
+    ]
+
+    private static func allocatedBytes(of values: URLResourceValues?) -> Int64 {
+        Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)
+    }
+
     private static func fileSize(at url: URL) -> Int64 {
-        let values = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey])
-        return Int64(values?.totalFileAllocatedSize ?? values?.fileAllocatedSize ?? 0)
+        allocatedBytes(of: try? url.resourceValues(forKeys: allocatedSizeKeys))
     }
 
     private static func directorySize(at url: URL) -> Int64 {
         let fileManager = FileManager.default
-        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey, .isRegularFileKey]
+        let keys = allocatedSizeKeys.union([.isRegularFileKey])
 
         guard let enumerator = fileManager.enumerator(
             at: url,
@@ -212,7 +228,7 @@ enum StorageMaintenance {
                   values.isRegularFile == true else {
                 continue
             }
-            total += Int64(values.totalFileAllocatedSize ?? values.fileAllocatedSize ?? 0)
+            total += allocatedBytes(of: values)
         }
         return total
     }

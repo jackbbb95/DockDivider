@@ -30,6 +30,23 @@ enum DividerStyle: String, CaseIterable, Identifiable, Codable, Sendable {
         }
     }
 
+    /// Whether the style draws with the shared color, opacity, and tint controls.
+    var usesDividerTint: Bool {
+        self != .spacer && self != .image
+    }
+
+    /// Whether the thickness control changes this style's artwork.
+    var supportsThickness: Bool {
+        self == .line || self == .dashed || self == .dot
+    }
+
+    /// Whether the shared height/scale slider applies to this style.
+    ///
+    /// Dot size is driven by thickness instead of the scale slider.
+    var supportsScale: Bool {
+        self == .line || self == .dashed || self == .label || self == .image
+    }
+
     nonisolated init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let raw = try container.decode(String.self)
@@ -219,6 +236,20 @@ struct DividerModel: Identifiable, Equatable, Sendable, Codable {
     /// which requires synthesizing a full-width `.app` bundle instead of a native `.dockspace` tile.
     var requiresAppBundleForSpacer: Bool {
         !hoverLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || actionConfig.actionType != .none
+    }
+
+    /// True when this design should be staged as a native Dock spacer file
+    /// instead of a synthesized app bundle.
+    var usesNativeSpacerTile: Bool {
+        style == .spacer && !requiresAppBundleForSpacer
+    }
+
+    /// Whether the Dock will show a hover tooltip for this design.
+    ///
+    /// Native spacer tiles are the only artifacts with no tooltip; a spacer
+    /// with a tooltip or click action becomes a synthesized app bundle.
+    var showsTooltip: Bool {
+        !usesNativeSpacerTile
     }
 
     /// Copy that is safe to embed in a generated bundle.

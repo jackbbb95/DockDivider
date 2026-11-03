@@ -183,30 +183,14 @@ struct ClickActionPickerView: View {
                     }
                     .labelsHidden()
 
-                    Button {
-                        loadUserShortcuts(force: true)
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Refresh Shortcuts List")
-                    .accessibilityLabel("Refresh Shortcuts list")
+                    shortcutRefreshButton
                 }
             } else {
                 HStack(spacing: 6) {
                     TextField("e.g. Toggle Focus Mode", text: $config.shortcutName)
                         .textFieldStyle(.roundedBorder)
 
-                    Button {
-                        loadUserShortcuts(force: true)
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.caption)
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Refresh Shortcuts List")
-                    .accessibilityLabel("Refresh Shortcuts list")
+                    shortcutRefreshButton
                 }
             }
         }
@@ -261,6 +245,18 @@ struct ClickActionPickerView: View {
     }
 
     // MARK: - Shortcuts Loader
+
+    private var shortcutRefreshButton: some View {
+        Button {
+            loadUserShortcuts(force: true)
+        } label: {
+            Image(systemName: "arrow.clockwise")
+                .font(.caption)
+        }
+        .buttonStyle(.borderless)
+        .help("Refresh Shortcuts List")
+        .accessibilityLabel("Refresh Shortcuts list")
+    }
 
     private func loadUserShortcuts(force: Bool = false) {
         if !force, let cached = Self.cachedShortcuts {
@@ -338,37 +334,17 @@ struct ClickActionPickerView: View {
     }
 
     private func webURLRow(for webURL: String) -> some View {
-        HStack(spacing: 8) {
+        SettingsRemovableRow(
+            title: webURL,
+            removeHelp: "Remove URL",
+            removeAccessibilityLabel: "Remove \(webURL)",
+            onRemove: {
+                config.webURLs.removeAll(where: { $0 == webURL })
+            }
+        ) {
             Image(systemName: "globe")
                 .foregroundStyle(.secondary)
-
-            Text(webURL)
-                .font(.subheadline)
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            Spacer()
-
-            Button {
-                config.webURLs.removeAll(where: { $0 == webURL })
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Remove URL")
-            .accessibilityLabel("Remove \(webURL)")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                )
-        )
     }
 
     // MARK: - Shell Script Picker
@@ -396,40 +372,22 @@ struct ClickActionPickerView: View {
         let fileURL = (URL(string: appURLString)?.standardizedFileURL ?? URL(fileURLWithPath: appURLString)).standardizedFileURL
         let displayName = fileURL.deletingPathExtension().lastPathComponent
         let icon = cachedAppIcon(for: fileURL.path)
+        let title = displayName.isEmpty ? appURLString : displayName
 
-        return HStack(spacing: 8) {
+        return SettingsRemovableRow(
+            title: title,
+            removeHelp: "Remove application",
+            removeAccessibilityLabel: "Remove \(title)",
+            onRemove: {
+                config.appBundleURLs.removeAll(where: { $0 == appURLString })
+            }
+        ) {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 20, height: 20)
-
-            Text(displayName.isEmpty ? appURLString : displayName)
-                .font(.subheadline)
-                .lineLimit(1)
-
-            Spacer()
-
-            Button {
-                config.appBundleURLs.removeAll(where: { $0 == appURLString })
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Remove application")
-            .accessibilityLabel("Remove \(displayName.isEmpty ? appURLString : displayName)")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                )
-        )
     }
 
     /// IconServices lookups are cheap but not free, and this view re-renders on

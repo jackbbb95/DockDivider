@@ -84,7 +84,7 @@ struct AppearanceControlsView: View {
 
     /// Spacer and image styles do not use the divider tint.
     private var supportsSampledColor: Bool {
-        model.style != .spacer && model.style != .image
+        model.style.usesDividerTint
     }
 
     // MARK: - Spacer Section
@@ -122,28 +122,10 @@ struct AppearanceControlsView: View {
 
     @ViewBuilder
     private var spacerInfoBox: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle.fill")
-                .foregroundStyle(Color.accentColor)
-                .font(.system(size: 16))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Native macOS Spacer Tile")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text("With no Click Action or Tooltip set, this drags a true native macOS Dock spacer (`spacer-tile`) with zero tooltip and zero clickability. Adding a Click Action or Tooltip automatically converts it into an Invisible App Hider.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                )
+        SettingsInfoBox(
+            systemImage: "info.circle.fill",
+            title: "Native macOS Spacer Tile",
+            message: "With no Click Action or Tooltip set, this drags a true native macOS Dock spacer (`spacer-tile`) with zero tooltip and zero clickability. Adding a Click Action or Tooltip automatically converts it into an Invisible App Hider."
         )
     }
 
@@ -151,7 +133,7 @@ struct AppearanceControlsView: View {
 
     @ViewBuilder
     private var colorSection: some View {
-        if model.style != .image {
+        if model.style.usesDividerTint {
             SettingsLabeledRow("Color / Tint:") {
                 Picker("Color Preset", selection: $model.colorPreset.deferred()) {
                     ForEach(ColorPreset.allCases) { preset in
@@ -191,7 +173,7 @@ struct AppearanceControlsView: View {
 
     @ViewBuilder
     private var dimensionsSection: some View {
-        if model.style == .line || model.style == .dashed || model.style == .dot {
+        if model.style.supportsThickness {
             SettingsSliderRow(
                 "Thickness:",
                 value: $model.thickness,
@@ -201,7 +183,7 @@ struct AppearanceControlsView: View {
             )
         }
 
-        if model.style == .line || model.style == .dashed || model.style == .label || model.style == .image {
+        if model.style.supportsScale {
             let labelText = (model.style == .image || model.style == .label)
                 ? "Scale:"
                 : (model.orientation == .horizontal ? "Width:" : "Height:")
@@ -473,28 +455,10 @@ struct AppearanceControlsView: View {
 
     @ViewBuilder
     private var tooltipInfoBox: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle.fill")
-                .foregroundStyle(Color.accentColor)
-                .font(.system(size: 16))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("macOS Dock Tooltips")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                Text("macOS does not allow hiding the tooltip completely; leaving this empty will display a small blank pill on hover.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color(nsColor: .controlBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
-                )
+        SettingsInfoBox(
+            systemImage: "info.circle.fill",
+            title: "macOS Dock Tooltips",
+            message: "macOS does not allow hiding the tooltip completely; leaving this empty will display a small blank pill on hover."
         )
     }
 
@@ -528,38 +492,37 @@ struct AppearanceControlsView: View {
     }
 
     private func loadImage(from url: URL) {
-        let revision = beginImageImport()
-
-        Task { @MainActor in
-            let result: ImageImportResult = await Task.detached(priority: .userInitiated) {
-                do {
-                    return .success(try CustomImageProcessor.process(fileURL: url))
-                } catch let error as ImageProcessingError {
-                    return .failure(error.errorDescription ?? "DockDivider couldn’t read that image.")
-                } catch {
-                    return .failure(error.localizedDescription)
-                }
-            }.value
-
-            // SVG and other vector formats that ImageIO cannot decode are
-            // rasterized by AppKit on the main actor as a fallback.
-            if case .failure = result,
-               let image = NSImage(contentsOf: url),
-               let processed = CustomImageProcessor.rasterize(image: image) {
-                finishImageImport(.success(processed), revision: revision)
-            } else {
-                finishImageImport(result, revision: revision)
-            }
+        importImage {
+            try CustomImageProcessor.process(fileURL: url)
+        } rasterFallback: {
+            NSImage(contentsOf: url)
         }
     }
 
     private func importImageData(_ data: Data) {
+        importImage {
+            try CustomImageProcessor.process(data: data)
+        } rasterFallback: {
+            NSImage(data: data)
+        }
+    }
+
+    /// Runs one image import off the main actor and publishes the result.
+    ///
+    /// ImageIO handles common formats in the background; `rasterFallback` is
+    /// the AppKit path for vectors such as SVG that ImageIO cannot decode. Both
+    /// entry points share the same revision guard so a slow import can never
+    /// overwrite a newer image or a clear.
+    private func importImage(
+        processing: @escaping @Sendable () throws -> ProcessedImage,
+        rasterFallback: @escaping @MainActor () -> NSImage?
+    ) {
         let revision = beginImageImport()
 
         Task { @MainActor in
             let result: ImageImportResult = await Task.detached(priority: .userInitiated) {
                 do {
-                    return .success(try CustomImageProcessor.process(data: data))
+                    return .success(try processing())
                 } catch let error as ImageProcessingError {
                     return .failure(error.errorDescription ?? "DockDivider couldn’t read that image.")
                 } catch {
@@ -568,7 +531,7 @@ struct AppearanceControlsView: View {
             }.value
 
             if case .failure = result,
-               let image = NSImage(data: data),
+               let image = rasterFallback(),
                let processed = CustomImageProcessor.rasterize(image: image) {
                 finishImageImport(.success(processed), revision: revision)
             } else {

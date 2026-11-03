@@ -122,9 +122,7 @@ final class StagingController: ObservableObject {
         // When in Blank Spacer mode with no click action and no custom hover tooltip,
         // use native .dockspace / .docksmallspace / .dockflexspace trigger files so
         // Dock.app creates a true DOCKSpacerTile (zero tooltip bubble and zero clickability).
-        let isPassiveNativeSpacer = (snapshot.style == .spacer)
-            && (snapshot.actionConfig.actionType == .none)
-            && snapshot.hoverLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isPassiveNativeSpacer = snapshot.usesNativeSpacerTile
 
         if isPassiveNativeSpacer {
             launchStaging(

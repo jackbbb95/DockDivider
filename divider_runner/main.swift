@@ -29,6 +29,11 @@ func openURL(_ url: URL) {
     }
 }
 
+/// Opens a file-system path without waiting for its app to finish launching.
+func openPath(_ path: String) {
+    openURL(URL(fileURLWithPath: path))
+}
+
 /// Starts a child process and deliberately does not wait for it. Long-running
 /// shell commands, Shortcuts, and utilities must not keep the helper alive.
 func launchDetached(
@@ -161,10 +166,10 @@ case .systemAction:
         NSWorkspace.shared.hideOtherApplications()
 
     case .startScreensaver:
-        openURL(URL(fileURLWithPath: "/System/Library/CoreServices/ScreenSaverEngine.app"))
+        openPath("/System/Library/CoreServices/ScreenSaverEngine.app")
 
     case .screenshot:
-        openURL(URL(fileURLWithPath: "/System/Applications/Utilities/Screenshot.app"))
+        openPath("/System/Applications/Utilities/Screenshot.app")
 
     case .openTrash:
         openURL(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".Trash"))
@@ -189,21 +194,20 @@ case .systemAction:
         ])
 
     case .missionControl:
-        openURL(URL(fileURLWithPath: "/System/Applications/Mission Control.app"))
+        openPath("/System/Applications/Mission Control.app")
 
     case .launchpad:
-        let launchpadURL = URL(fileURLWithPath: "/System/Applications/Launchpad.app")
-        if FileManager.default.fileExists(atPath: launchpadURL.path) {
-            openURL(launchpadURL)
+        if FileManager.default.fileExists(atPath: SystemActionType.launchpadPath) {
+            openPath(SystemActionType.launchpadPath)
         } else {
             logger.error("Launchpad is not available on this version of macOS.")
         }
 
     case .activityMonitor:
-        openURL(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
+        openPath("/System/Applications/Utilities/Activity Monitor.app")
 
     case .colorMeter:
-        openURL(URL(fileURLWithPath: "/System/Applications/Utilities/Digital Color Meter.app"))
+        openPath("/System/Applications/Utilities/Digital Color Meter.app")
 
     case .clearClipboard:
         NSPasteboard.general.clearContents()
@@ -217,9 +221,8 @@ case .systemAction:
         }
 
     case .openAirDrop:
-        let airdropURL = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app/Contents/Applications/AirDrop.app")
-        if FileManager.default.fileExists(atPath: airdropURL.path) {
-            openURL(airdropURL)
+        if FileManager.default.fileExists(atPath: SystemActionType.airDropPath) {
+            openPath(SystemActionType.airDropPath)
         } else {
             logger.error("AirDrop is not available in Finder on this version of macOS.")
         }

@@ -103,19 +103,20 @@ enum BundleSynthesizer {
         if let customIcon {
             _ = NSWorkspace.shared.setIcon(customIcon, forFile: appBundleURL.path, options: [])
         }
-
-        BundleStagingService.removeQuarantine(at: appBundleURL)
-        try? FileManager.default.setAttributes(
-            [.modificationDate: Date()],
-            ofItemAtPath: appBundleURL.path
-        )
-        NSWorkspace.shared.noteFileSystemChanged(appBundleURL.path)
+        refreshFileSystemEntry(at: appBundleURL)
     }
 
     /// Notifies the filesystem for artifacts that do not need an icon, such as
     /// native spacer trigger files.
     @MainActor
     static func notifyFileSystemChanged(at url: URL) {
+        refreshFileSystemEntry(at: url)
+    }
+
+    /// Clears quarantine, stamps a fresh modification date, and tells Finder to
+    /// refresh the item.
+    @MainActor
+    private static func refreshFileSystemEntry(at url: URL) {
         BundleStagingService.removeQuarantine(at: url)
         try? FileManager.default.setAttributes(
             [.modificationDate: Date()],

@@ -22,13 +22,48 @@ final class RenderCache {
         let pixelSize: Int
     }
 
-    private var images: [CacheKey: CGImage] = [:]
-    private var imageOrder: [CacheKey] = []
-    private let imageLimit = 64
+    /// Small least-recently-used store used for both rendered images and ICNS
+    /// payloads. Reading an entry promotes it so bursts of preview passes keep
+    /// the images they are actively drawing.
+    private struct LRUCache<Key: Hashable, Value> {
+        private var values: [Key: Value] = [:]
+        private var order: [Key] = []
+        private let limit: Int
 
-    private var iconData: [RenderKey: Data] = [:]
-    private var iconDataOrder: [RenderKey] = []
-    private let iconDataLimit = 12
+        init(limit: Int) {
+            self.limit = limit
+        }
+
+        mutating func value(for key: Key) -> Value? {
+            guard let value = values[key] else { return nil }
+            touch(key)
+            return value
+        }
+
+        mutating func insert(_ value: Value, for key: Key) {
+            values[key] = value
+            touch(key)
+
+            while order.count > limit {
+                values.removeValue(forKey: order.removeFirst())
+            }
+        }
+
+        mutating func removeAll() {
+            values.removeAll()
+            order.removeAll()
+        }
+
+        private mutating func touch(_ key: Key) {
+            if let index = order.firstIndex(of: key) {
+                order.remove(at: index)
+            }
+            order.append(key)
+        }
+    }
+
+    private var images = LRUCache<CacheKey, CGImage>(limit: 64)
+    private var iconData = LRUCache<RenderKey, Data>(limit: 12)
 
     private let sourceImages = NSCache<NSString, NSImage>()
     private let sourceImageLimit = 8
@@ -45,56 +80,29 @@ final class RenderCache {
 
     func image(for renderKey: RenderKey, pixelSize: Int) -> CGImage? {
         let key = CacheKey(renderKey: renderKey, pixelSize: pixelSize)
-        guard let image = images[key] else {
+        guard let image = images.value(for: key) else {
             imageMisses += 1
             return nil
-        }
-
-        if let index = imageOrder.firstIndex(of: key) {
-            imageOrder.remove(at: index)
-            imageOrder.append(key)
         }
         return image
     }
 
     func store(_ image: CGImage, for renderKey: RenderKey, pixelSize: Int) {
-        let key = CacheKey(renderKey: renderKey, pixelSize: pixelSize)
-        images[key] = image
-
-        imageOrder.removeAll { $0 == key }
-        imageOrder.append(key)
-
-        while imageOrder.count > imageLimit {
-            let evicted = imageOrder.removeFirst()
-            images.removeValue(forKey: evicted)
-        }
+        images.insert(image, for: CacheKey(renderKey: renderKey, pixelSize: pixelSize))
     }
 
     // MARK: - ICNS Data
 
     func data(for renderKey: RenderKey) -> Data? {
-        guard let data = iconData[renderKey] else {
+        guard let data = iconData.value(for: renderKey) else {
             iconDataMisses += 1
             return nil
-        }
-
-        if let index = iconDataOrder.firstIndex(of: renderKey) {
-            iconDataOrder.remove(at: index)
-            iconDataOrder.append(renderKey)
         }
         return data
     }
 
     func store(_ data: Data, for renderKey: RenderKey) {
-        iconData[renderKey] = data
-
-        iconDataOrder.removeAll { $0 == renderKey }
-        iconDataOrder.append(renderKey)
-
-        while iconDataOrder.count > iconDataLimit {
-            let evicted = iconDataOrder.removeFirst()
-            iconData.removeValue(forKey: evicted)
-        }
+        iconData.insert(data, for: renderKey)
     }
 
     // MARK: - Decoded Source Images
@@ -146,9 +154,7 @@ final class RenderCache {
 
     func removeAll() {
         images.removeAll()
-        imageOrder.removeAll()
         iconData.removeAll()
-        iconDataOrder.removeAll()
         sourceImages.removeAllObjects()
         imageMisses = 0
         iconDataMisses = 0

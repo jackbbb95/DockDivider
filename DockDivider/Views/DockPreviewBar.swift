@@ -201,32 +201,16 @@ struct DockPreviewBar: View {
     private var horizontalDockPreview: some View {
         ZStack(alignment: .top) {
             HStack(spacing: 12) {
-                dockAppIcon(
-                    name: "Finder",
-                    path: "/System/Library/CoreServices/Finder.app",
-                    fallbackSystemName: "macwindow"
-                )
+                dockAppIcon(.finder)
 
-                dockAppIcon(
-                    name: "Safari",
-                    path: "/Applications/Safari.app",
-                    fallbackSystemName: "safari"
-                )
+                dockAppIcon(.safari)
 
                 // Live Divider Preview Item with Simulated Native Tooltip
                 dividerPreviewWithTooltip
 
-                dockAppIcon(
-                    name: "Messages",
-                    path: "/System/Applications/Messages.app",
-                    fallbackSystemName: "message.fill"
-                )
+                dockAppIcon(.messages)
 
-                dockAppIcon(
-                    name: "Settings",
-                    path: "/System/Applications/System Settings.app",
-                    fallbackSystemName: "gear"
-                )
+                dockAppIcon(.settings)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -243,20 +227,12 @@ struct DockPreviewBar: View {
         HStack(spacing: 0) {
             ZStack(alignment: .leading) {
                 VStack(spacing: 8) {
-                    dockAppIcon(
-                        name: "Safari",
-                        path: "/Applications/Safari.app",
-                        fallbackSystemName: "safari"
-                    )
+                    dockAppIcon(.safari)
 
                     // Live Horizontal Divider Preview Item with Side Tooltip
                     dividerPreviewWithTooltip
 
-                    dockAppIcon(
-                        name: "Messages",
-                        path: "/System/Applications/Messages.app",
-                        fallbackSystemName: "message.fill"
-                    )
+                    dockAppIcon(.messages)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 12)
@@ -288,14 +264,14 @@ struct DockPreviewBar: View {
     @ViewBuilder
     private var dividerPreviewWithTooltip: some View {
         let trimmedLabel = model.hoverLabel.trimmingCharacters(in: .whitespaces)
-        let showsTooltip = (model.style != .spacer || model.requiresAppBundleForSpacer)
+        let showsTooltip = model.showsTooltip
 
         if model.orientation == .horizontal {
             dividerPreviewItem
                 .scaleEffect(isHoveringDivider ? 1.05 : 1.0)
                 .overlay(alignment: .leading) {
                     if showsTooltip {
-                        sideTooltipPill(label: trimmedLabel)
+                        tooltipPill(label: trimmedLabel, edge: .leading)
                     }
                 }
                 .onHover { hovering in
@@ -309,7 +285,7 @@ struct DockPreviewBar: View {
                 .scaleEffect(isHoveringDivider ? 1.05 : 1.0)
                 .overlay(alignment: .top) {
                     if showsTooltip {
-                        tooltipPill(label: trimmedLabel)
+                        tooltipPill(label: trimmedLabel, edge: .bottom)
                     }
                 }
                 .onHover { hovering in
@@ -322,46 +298,27 @@ struct DockPreviewBar: View {
     }
 
     @ViewBuilder
-    private func tooltipPill(label: String) -> some View {
-        let shape = DockTooltipShape(pointerEdge: .bottom, pointerWidth: 10, pointerHeight: 4, tipRadius: 1.5)
+    private func tooltipPill(label: String, edge: TooltipPointerEdge) -> some View {
+        let isSide = edge == .leading
+        let shape = DockTooltipShape(pointerEdge: edge, pointerWidth: 10, pointerHeight: 4, tipRadius: 1.5)
         let textColor = currentIsDarkDock ? Color.white.opacity(0.96) : Color.black.opacity(0.88)
         let horizontalPadding: CGFloat = label.isEmpty ? 0 : 10
         let minWidth: CGFloat = label.isEmpty ? 32 : 36
-        let minHeight: CGFloat = 14
 
         Text(label)
             .font(.system(size: 11, weight: .regular))
             .foregroundStyle(textColor)
             .lineLimit(1)
             .padding(.horizontal, horizontalPadding)
-            .frame(minWidth: minWidth, minHeight: minHeight)
-            .padding(.top, 2)
-            .padding(.bottom, 6)
+            .frame(minWidth: minWidth, minHeight: isSide ? 16 : 14)
+            .padding(.top, isSide ? 0 : 2)
+            .padding(.bottom, isSide ? 0 : 6)
+            .padding(.leading, isSide ? 5 : 0)
+            .padding(.trailing, isSide ? 3 : 0)
+            .padding(.vertical, isSide ? 2.5 : 0)
             .background(tooltipBackground(shape: shape))
             .fixedSize()
-            .offset(y: -40)
-    }
-
-    @ViewBuilder
-    private func sideTooltipPill(label: String) -> some View {
-        let shape = DockTooltipShape(pointerEdge: .leading, pointerWidth: 10, pointerHeight: 4, tipRadius: 1.5)
-        let textColor = currentIsDarkDock ? Color.white.opacity(0.96) : Color.black.opacity(0.88)
-        let horizontalPadding: CGFloat = label.isEmpty ? 0 : 10
-        let minWidth: CGFloat = label.isEmpty ? 32 : 36
-        let minHeight: CGFloat = 16
-
-        Text(label)
-            .font(.system(size: 11, weight: .regular))
-            .foregroundStyle(textColor)
-            .lineLimit(1)
-            .padding(.horizontal, horizontalPadding)
-            .frame(minWidth: minWidth, minHeight: minHeight)
-            .padding(.leading, 5)
-            .padding(.trailing, 3)
-            .padding(.vertical, 2.5)
-            .background(tooltipBackground(shape: shape))
-            .fixedSize()
-            .offset(x: 66)
+            .offset(x: isSide ? 66 : 0, y: isSide ? 0 : -40)
     }
 
     @ViewBuilder
@@ -383,7 +340,7 @@ struct DockPreviewBar: View {
     private var dividerPreviewItem: some View {
         let image = IconRenderer.renderNSImage(for: model, size: CGSize(width: 48, height: 48))
         let previewWidth: CGFloat = {
-            guard model.style == .spacer, !model.requiresAppBundleForSpacer else { return 48 }
+            guard model.usesNativeSpacerTile else { return 48 }
             switch model.spacerSize {
             case .small: return 24
             case .regular: return 48
@@ -398,6 +355,29 @@ struct DockPreviewBar: View {
     }
 
     // MARK: - App Icons
+
+    /// One placeholder app in the simulated Dock.
+    private struct PreviewApp {
+        let path: String
+        let fallbackSystemName: String
+
+        static let finder = PreviewApp(
+            path: "/System/Library/CoreServices/Finder.app",
+            fallbackSystemName: "macwindow"
+        )
+        static let safari = PreviewApp(
+            path: "/Applications/Safari.app",
+            fallbackSystemName: "safari"
+        )
+        static let messages = PreviewApp(
+            path: "/System/Applications/Messages.app",
+            fallbackSystemName: "message.fill"
+        )
+        static let settings = PreviewApp(
+            path: "/System/Applications/System Settings.app",
+            fallbackSystemName: "gear"
+        )
+    }
 
     private static var iconCache: [String: NSImage] = [:]
     private static var missingIconPaths: Set<String> = []
@@ -419,8 +399,8 @@ struct DockPreviewBar: View {
     }
 
     @ViewBuilder
-    private func dockAppIcon(name: String, path: String, fallbackSystemName: String) -> some View {
-        if let icon = cachedSystemIcon(for: path) {
+    private func dockAppIcon(_ app: PreviewApp) -> some View {
+        if let icon = cachedSystemIcon(for: app.path) {
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
@@ -428,12 +408,12 @@ struct DockPreviewBar: View {
                 .frame(width: 48, height: 48)
                 .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
         } else {
-            dockFallbackIcon(name, systemName: fallbackSystemName)
+            dockFallbackIcon(systemName: app.fallbackSystemName)
         }
     }
 
     @ViewBuilder
-    private func dockFallbackIcon(_ title: String, systemName: String) -> some View {
+    private func dockFallbackIcon(systemName: String) -> some View {
         RoundedRectangle(cornerRadius: 10)
             .fill(
                 LinearGradient(

@@ -64,20 +64,21 @@ struct AppEnvironment {
         // drive IconServices; its tests use an isolated AppEnvironment.
         let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
+        let enabled = !isRunningTests
         return AppEnvironment(
             userDefaults: .standard,
             applicationSupportDirectory: FileManager.default.urls(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
             ).first!,
-            repairOnLaunch: !isRunningTests,
-            stagesOnLaunch: !isRunningTests,
-            stagesOnDraftChanges: !isRunningTests,
-            registerWithLaunchServices: !isRunningTests,
+            repairOnLaunch: enabled,
+            stagesOnLaunch: enabled,
+            stagesOnDraftChanges: enabled,
+            registerWithLaunchServices: enabled,
             stagingDebounce: 0.25,
-            persistsDraft: !isRunningTests,
-            showsOnboarding: !isRunningTests,
-            appliesFinderIcons: !isRunningTests
+            persistsDraft: enabled,
+            showsOnboarding: enabled,
+            appliesFinderIcons: enabled
         )
     }
 }

@@ -80,13 +80,7 @@ final class StorageLocationStore: ObservableObject {
 
         if let url {
             securityScopeToken = SecurityScopeToken(url)
-            let bookmark = (try? url.bookmarkData(
-                options: [.withSecurityScope],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )) ?? (try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
-
-            if let bookmark {
+            if let bookmark = Self.makeBookmark(for: url) {
                 defaults.set(bookmark, forKey: Self.bookmarkKey)
             }
             customStorageURL = url
@@ -136,15 +130,24 @@ final class StorageLocationStore: ObservableObject {
         customStorageURL = url
 
         if isStale {
-            let newBookmark = (try? url.bookmarkData(
-                options: [.withSecurityScope],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )) ?? (try? url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil))
-            if let newBookmark {
+            if let newBookmark = Self.makeBookmark(for: url) {
                 defaults.set(newBookmark, forKey: Self.bookmarkKey)
             }
         }
+    }
+
+    /// Creates a security-scoped bookmark when the location supports it, and
+    /// falls back to a plain bookmark otherwise.
+    private static func makeBookmark(for url: URL) -> Data? {
+        (try? url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )) ?? (try? url.bookmarkData(
+            options: [],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        ))
     }
 }
 

@@ -305,6 +305,46 @@ struct DockDividerTests {
         #expect(model.verticalOffset == 0.0)
     }
 
+    @Test func testStyleCapabilitiesMatchEditorControls() {
+        #expect(DividerStyle.line.usesDividerTint)
+        #expect(DividerStyle.label.usesDividerTint)
+        #expect(!DividerStyle.spacer.usesDividerTint)
+        #expect(!DividerStyle.image.usesDividerTint)
+
+        #expect(DividerStyle.line.supportsThickness)
+        #expect(DividerStyle.dashed.supportsThickness)
+        #expect(DividerStyle.dot.supportsThickness)
+        #expect(!DividerStyle.label.supportsThickness)
+        #expect(!DividerStyle.image.supportsThickness)
+        #expect(!DividerStyle.spacer.supportsThickness)
+
+        #expect(DividerStyle.line.supportsScale)
+        #expect(DividerStyle.dashed.supportsScale)
+        #expect(DividerStyle.label.supportsScale)
+        #expect(DividerStyle.image.supportsScale)
+        #expect(!DividerStyle.dot.supportsScale)
+        #expect(!DividerStyle.spacer.supportsScale)
+    }
+
+    @Test func testSpacerUsesNativeTileOnlyWithoutTooltipOrAction() {
+        var model = DividerModel(style: .spacer)
+        #expect(model.usesNativeSpacerTile)
+        #expect(!model.showsTooltip)
+
+        model.hoverLabel = "Tools"
+        #expect(!model.usesNativeSpacerTile)
+        #expect(model.showsTooltip)
+
+        model.hoverLabel = ""
+        model.actionConfig.actionType = .systemAction
+        #expect(!model.usesNativeSpacerTile)
+        #expect(model.showsTooltip)
+
+        model.style = .line
+        #expect(!model.usesNativeSpacerTile)
+        #expect(model.showsTooltip)
+    }
+
     @Test func testValidationWarnsOnlyForConfigurationsThatDoNothing() {
         var model = DividerModel()
         #expect(model.validationWarning == nil)

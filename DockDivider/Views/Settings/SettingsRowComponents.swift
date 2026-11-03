@@ -62,6 +62,124 @@ struct SettingsLabeledRow<Content: View>: View {
     }
 }
 
+// MARK: - Settings Card
+
+/// Standard bordered background for a group of settings controls.
+private struct SettingsCardModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
+                    )
+            )
+    }
+}
+
+extension View {
+    func settingsCard() -> some View {
+        modifier(SettingsCardModifier())
+    }
+}
+
+// MARK: - Settings Info Box
+
+/// Bordered explanation card shown beneath a control or group of controls.
+struct SettingsInfoBox: View {
+    let systemImage: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Color.accentColor)
+                .font(.system(size: 16))
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Settings Removable Row
+
+/// A compact entry chip with a leading icon and a trailing remove button.
+///
+/// Used for the app and URL lists in the click-action editor so both rows keep
+/// the same padding, background, and accessibility behavior.
+struct SettingsRemovableRow<Icon: View>: View {
+    let title: String
+    let removeHelp: String
+    let removeAccessibilityLabel: String
+    let onRemove: () -> Void
+    let icon: Icon
+
+    init(
+        title: String,
+        removeHelp: String,
+        removeAccessibilityLabel: String,
+        onRemove: @escaping () -> Void,
+        @ViewBuilder icon: () -> Icon
+    ) {
+        self.title = title
+        self.removeHelp = removeHelp
+        self.removeAccessibilityLabel = removeAccessibilityLabel
+        self.onRemove = onRemove
+        self.icon = icon()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            icon
+
+            Text(title)
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Spacer()
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(removeHelp)
+            .accessibilityLabel(removeAccessibilityLabel)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(nsColor: .controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+}
+
 // MARK: - Settings Slider Row
 
 struct SettingsSliderRow<V: BinaryFloatingPoint>: View where V.Stride: BinaryFloatingPoint {

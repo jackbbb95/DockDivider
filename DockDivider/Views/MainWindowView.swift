@@ -26,27 +26,11 @@ struct MainWindowView: View {
                         VStack(alignment: .leading, spacing: 14) {
                             // Card 1: Appearance & Dimensions
                             AppearanceControlsView(model: $appState.draft)
-                                .padding(14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.55))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                                        )
-                                )
+                                .settingsCard()
 
                             // Card 2: Click Behavior
                             ClickActionPickerView(config: $appState.draft.actionConfig)
-                                .padding(14)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10)
-                                        .fill(Color(nsColor: .controlBackgroundColor).opacity(0.55))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .stroke(Color.secondary.opacity(0.12), lineWidth: 1)
-                                        )
-                                )
+                                .settingsCard()
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 4)

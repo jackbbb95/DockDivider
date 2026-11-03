@@ -45,7 +45,7 @@ struct RenderKey: Hashable, Sendable {
             self.opacity = model.opacity
         }
 
-        let usesStroke = model.style == .line || model.style == .dashed || model.style == .dot
+        let usesStroke = model.style.supportsThickness
         self.thickness = usesStroke ? model.thickness : 0
         self.heightRatio = model.style == .spacer ? 1.0 : model.heightRatio
         self.verticalOffset = model.style == .spacer ? 0 : model.verticalOffset

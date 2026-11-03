@@ -231,13 +231,14 @@ enum BundleStagingService {
 
     static func locateRunnerExecutable() -> URL? {
         let fileManager = FileManager.default
+        let appStateBundle = Bundle(for: AppState.self)
         var candidateURLs: [URL] = []
 
         if let mainRes = Bundle.main.url(forResource: "divider_runner", withExtension: nil) {
             candidateURLs.append(mainRes)
         }
-        if let appStateBundle = Bundle(for: AppState.self).url(forResource: "divider_runner", withExtension: nil) {
-            candidateURLs.append(appStateBundle)
+        if let appStateRes = appStateBundle.url(forResource: "divider_runner", withExtension: nil) {
+            candidateURLs.append(appStateRes)
         }
         for bundle in Bundle.allBundles {
             if let res = bundle.url(forResource: "divider_runner", withExtension: nil) {
@@ -245,7 +246,7 @@ enum BundleStagingService {
             }
         }
 
-        let testBundleURL = Bundle(for: AppState.self).bundleURL
+        let testBundleURL = appStateBundle.bundleURL
         let hostAppResources = testBundleURL
             .deletingLastPathComponent()
             .deletingLastPathComponent()
