@@ -9,14 +9,14 @@ import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
 
-nonisolated struct ProcessedImage: Sendable {
+struct ProcessedImage: Sendable {
     let data: Data
     let pixelWidth: Int
     let pixelHeight: Int
     let imageID: UUID
 }
 
-nonisolated enum ImageProcessingError: Error, Equatable, LocalizedError, Sendable {
+enum ImageProcessingError: Error, Equatable, LocalizedError, Sendable {
     case unreadable
     case encodingFailed
 
@@ -42,7 +42,7 @@ nonisolated enum ImageProcessingError: Error, Equatable, LocalizedError, Sendabl
 /// Normalizes imported artwork once, before it reaches the renderer or a
 /// generated bundle. Common formats go through ImageIO off the main actor;
 /// formats ImageIO cannot rasterize (notably SVG) fall back to AppKit.
-nonisolated enum CustomImageProcessor {
+enum CustomImageProcessor {
     static let maximumPixelSize = 1024
 
     static func process(fileURL: URL) throws -> ProcessedImage {

@@ -10,7 +10,7 @@ import Foundation
 /// Properties that only affect bundle metadata (click actions, URLs, shell
 /// commands, hover labels) are deliberately excluded, so editing those fields
 /// reuses the cached icon instead of re-rendering it.
-nonisolated struct RenderKey: Hashable, Sendable {
+struct RenderKey: Hashable, Sendable {
     let style: DividerStyle
     let orientation: DividerOrientation
     let spacerSize: SpacerSize

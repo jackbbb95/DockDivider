@@ -11,7 +11,7 @@ import Foundation
 /// the preferences plist. Artwork is written once as `DraftImage.png` rather
 /// than base64-encoded into `Draft.json`, mirroring how generated bundles keep
 /// the image next to the model. Writes are atomic.
-nonisolated enum DraftPersistence {
+enum DraftPersistence {
     static let fileName = "Draft.json"
     static let imageFileName = "DraftImage.png"
 

@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Nothing in this type deletes automatically. The caller must present the
 /// unused items to the user and get confirmation before calling `cleanUp`.
-nonisolated enum StorageMaintenance {
+enum StorageMaintenance {
 
     /// Extensions macOS treats as native Dock spacer trigger files.
     static let spacerExtensions: Set<String> = ["dockspace", "docksmallspace", "dockflexspace"]

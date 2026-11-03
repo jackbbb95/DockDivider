@@ -12,7 +12,7 @@ import Foundation
 /// `SIGKILL`. Output is drained on a private queue so a chatty child cannot
 /// fill the pipe buffer and deadlock, and it is capped so a misbehaving tool
 /// cannot grow memory without bound.
-nonisolated enum BoundedProcess {
+enum BoundedProcess {
 
     struct Result: Sendable {
         let terminationStatus: Int32

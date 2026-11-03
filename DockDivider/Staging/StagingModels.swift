@@ -6,7 +6,7 @@
 import Foundation
 
 /// A generated artifact that is ready to be dragged into the Dock.
-nonisolated struct StagedBundle: Equatable, Sendable {
+struct StagedBundle: Equatable, Sendable {
     enum Kind: String, Sendable {
         case appBundle
         case nativeSpacer
@@ -21,7 +21,7 @@ nonisolated struct StagedBundle: Equatable, Sendable {
 ///
 /// `preparing` intentionally hides the previously staged bundle: a drag must
 /// never start with content that no longer matches the current draft.
-nonisolated enum StagingState: Equatable, Sendable {
+enum StagingState: Equatable, Sendable {
     case idle
     case preparing(revision: UInt64)
     case ready(StagedBundle)
@@ -54,7 +54,7 @@ nonisolated enum StagingState: Equatable, Sendable {
 /// These are deliberately user-facing: the view shows `errorDescription`,
 /// offers `recoverySuggestion`, and exposes a Retry button when `allowsRetry`
 /// is true.
-nonisolated enum StagingError: Error, Equatable, LocalizedError, Sendable {
+enum StagingError: Error, Equatable, LocalizedError, Sendable {
     case iconRenderFailed
     case runnerUnavailable
     case storageUnavailable(String)

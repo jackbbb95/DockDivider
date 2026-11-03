@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Supporting Enums
 
-nonisolated enum DividerStyle: String, CaseIterable, Identifiable, Codable, Sendable {
+enum DividerStyle: String, CaseIterable, Identifiable, Codable, Sendable {
     case line = "line"
     case dashed = "dashed"
     case dot = "dot"
@@ -45,7 +45,7 @@ nonisolated enum DividerStyle: String, CaseIterable, Identifiable, Codable, Send
     }
 }
 
-nonisolated enum LabelMode: String, CaseIterable, Identifiable, Codable, Sendable {
+enum LabelMode: String, CaseIterable, Identifiable, Codable, Sendable {
     case text = "text"
     case symbol = "symbol"
 
@@ -69,7 +69,7 @@ nonisolated enum LabelMode: String, CaseIterable, Identifiable, Codable, Sendabl
     }
 }
 
-nonisolated enum ColorPreset: String, CaseIterable, Identifiable, Codable, Sendable {
+enum ColorPreset: String, CaseIterable, Identifiable, Codable, Sendable {
     case adaptiveWhite = "adaptiveWhite"
     case dark = "dark"
     case custom = "custom"
@@ -96,7 +96,7 @@ nonisolated enum ColorPreset: String, CaseIterable, Identifiable, Codable, Senda
     }
 }
 
-nonisolated enum DividerOrientation: String, CaseIterable, Identifiable, Codable, Sendable {
+enum DividerOrientation: String, CaseIterable, Identifiable, Codable, Sendable {
     case vertical = "vertical"
     case horizontal = "horizontal"
 
@@ -131,7 +131,7 @@ nonisolated enum DividerOrientation: String, CaseIterable, Identifiable, Codable
     }
 }
 
-nonisolated enum SpacerSize: String, CaseIterable, Identifiable, Codable, Sendable {
+enum SpacerSize: String, CaseIterable, Identifiable, Codable, Sendable {
     case regular = "regular"
     case small = "small"
     case flex = "flex"
@@ -168,7 +168,7 @@ nonisolated enum SpacerSize: String, CaseIterable, Identifiable, Codable, Sendab
 
 // MARK: - DividerModel Definition
 
-nonisolated struct DividerModel: Identifiable, Equatable, Sendable, Codable {
+struct DividerModel: Identifiable, Equatable, Sendable, Codable {
     var id: UUID = UUID()
     var style: DividerStyle = .line {
         didSet {

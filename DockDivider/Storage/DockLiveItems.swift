@@ -11,7 +11,7 @@ import CoreFoundation
 /// The Dock stores divider bundles as `file-data` entries inside
 /// `persistent-apps`/`persistent-others` in `com.apple.dock`. Cleanup uses this
 /// set to avoid deleting anything that is still backing a Dock tile.
-nonisolated enum DockLiveItems {
+enum DockLiveItems {
     /// Returns the canonical paths of every file referenced by the Dock, or
     /// `nil` when the Dock configuration cannot be read.
     ///

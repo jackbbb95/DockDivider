@@ -11,7 +11,7 @@ import Foundation
 /// storage folder, signed there, and then moved into place with a single
 /// same-volume rename. A partially written bundle is therefore never visible to
 /// the Dock, `StorageMaintenance`, or the user.
-nonisolated enum BundleStagingService {
+enum BundleStagingService {
 
     // MARK: - Divider App Bundles
 

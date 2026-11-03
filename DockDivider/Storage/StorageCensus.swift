@@ -5,7 +5,7 @@
 
 import Foundation
 
-nonisolated struct StorageItem: Identifiable, Equatable, Sendable {
+struct StorageItem: Identifiable, Equatable, Sendable {
     enum Kind: String, Sendable {
         case appBundle
         case nativeSpacer
@@ -45,7 +45,7 @@ nonisolated struct StorageItem: Identifiable, Equatable, Sendable {
     }
 }
 
-nonisolated struct StorageSummary: Equatable, Sendable {
+struct StorageSummary: Equatable, Sendable {
     let itemCount: Int
     let totalBytes: Int64
     let unusedCount: Int
@@ -53,7 +53,7 @@ nonisolated struct StorageSummary: Equatable, Sendable {
     let liveSetAvailable: Bool
 }
 
-nonisolated struct StorageCensus: Equatable, Sendable {
+struct StorageCensus: Equatable, Sendable {
     let items: [StorageItem]
     /// Items safe to remove: not referenced by the Dock, not the active staged
     /// bundle, and older than the grace period.
@@ -84,7 +84,7 @@ nonisolated struct StorageCensus: Equatable, Sendable {
 }
 
 /// The source used to decide which storage items are currently referenced by the Dock.
-nonisolated enum StorageLiveSet: Sendable, Equatable {
+enum StorageLiveSet: Sendable, Equatable {
     case currentDock
     case known(Set<String>)
     case unavailable

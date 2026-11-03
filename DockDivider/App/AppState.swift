@@ -14,7 +14,7 @@ import AppKit
 /// Production uses `.live`. Unit tests inject a temporary application-support
 /// folder and a dedicated `UserDefaults` suite so they never read or mutate the
 /// developer's real divider storage, bookmark, or Dock configuration.
-nonisolated struct AppEnvironment {
+struct AppEnvironment {
     var userDefaults: UserDefaults
     var applicationSupportDirectory: URL
     var repairOnLaunch: Bool

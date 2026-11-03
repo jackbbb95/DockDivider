@@ -131,7 +131,7 @@ enum BundleSynthesizer {
     /// The plan holds Foundation values only: plist and model inspection happen
     /// during the scan, while icon rendering and IconServices application stay
     /// on the main actor in `applyRepair`.
-    nonisolated struct DividerBundleRepairPlan: Sendable {
+    struct DividerBundleRepairPlan: Sendable {
         let bundleURL: URL
         let repairedPlistData: Data?
         /// The model with its orientation updated, when the Dock moved.

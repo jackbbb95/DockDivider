@@ -10,7 +10,7 @@ import Foundation
 /// The marker lets repair and cleanup distinguish DockDivider-generated bundles
 /// from unrelated `.app` bundles in a user-selected folder. Bundles created by
 /// older builds are still recognised by their `divider_runner` executable.
-nonisolated struct BundleMarker: Codable, Equatable, Sendable {
+struct BundleMarker: Codable, Equatable, Sendable {
     static let fileName = ".dockdivider.json"
     static let currentSchemaVersion = 1
     static let currentRunnerVersion = "2"

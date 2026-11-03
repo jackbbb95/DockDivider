@@ -9,7 +9,7 @@ import Foundation
 
 // MARK: - Action Enums
 
-nonisolated enum ActionType: String, CaseIterable, Identifiable, Codable, Sendable {
+enum ActionType: String, CaseIterable, Identifiable, Codable, Sendable {
     case none = "none"
     case openAppsAndURLs = "openAppsAndURLs"
     case systemAction = "systemAction"
@@ -29,7 +29,7 @@ nonisolated enum ActionType: String, CaseIterable, Identifiable, Codable, Sendab
     }
 }
 
-nonisolated enum SystemActionType: String, CaseIterable, Identifiable, Codable, Sendable {
+enum SystemActionType: String, CaseIterable, Identifiable, Codable, Sendable {
     case hideOthers = "hideOthers"
     case startScreensaver = "startScreensaver"
     case screenshot = "screenshot"
@@ -122,7 +122,7 @@ nonisolated enum SystemActionType: String, CaseIterable, Identifiable, Codable, 
 
 // MARK: - ActionConfig Model
 
-nonisolated struct ActionConfig: Codable, Equatable, Sendable {
+struct ActionConfig: Codable, Equatable, Sendable {
     nonisolated static let currentSchemaVersion = 1
 
     var schemaVersion: Int = currentSchemaVersion

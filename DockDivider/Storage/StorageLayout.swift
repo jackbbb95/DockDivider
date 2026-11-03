@@ -6,7 +6,7 @@
 import Foundation
 
 /// Layout rules for the folder that backs generated Dock dividers.
-nonisolated enum StorageLayout {
+enum StorageLayout {
     /// Generated content always lives in a dedicated subfolder so a user-selected
     /// root such as ~/Applications never fills up with generated app bundles.
     static let folderName = "DockDividers"
@@ -30,7 +30,7 @@ nonisolated enum StorageLayout {
 }
 
 /// Canonical path helpers shared by storage scanning and Dock reference matching.
-nonisolated enum StoragePath {
+enum StoragePath {
     static func canonical(_ url: URL) -> String {
         url.standardizedFileURL.resolvingSymlinksInPath().path
     }
