@@ -24,6 +24,7 @@ struct StyleSelectorView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .accessibilityIdentifier("style-picker")
             .frame(maxWidth: .infinity)
         }
     }

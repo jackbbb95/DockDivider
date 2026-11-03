@@ -214,6 +214,7 @@ struct StorageCleanupView: View {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
+            .accessibilityIdentifier("storage-cleanup-close")
 
             if let census, census.liveSetAvailable, !census.unusedItems.isEmpty {
                 Button("Move \(census.unusedItems.count) to Trash…", role: .destructive) {

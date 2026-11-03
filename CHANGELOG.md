@@ -20,6 +20,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Ad-hoc signing, LaunchServices registration, Finder custom icons, and repair
   for older generated dividers.
 - Universal Release build (`arm64` + `x86_64`) with hardened runtime.
+- UI tests for launch, style validation, onboarding persistence, and storage
+  cleanup, backed by an isolated UI-test launch mode.
 - GitHub Actions CI for unit tests and an unsigned Release build.
 
 ### Security

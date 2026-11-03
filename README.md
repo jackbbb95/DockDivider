@@ -134,6 +134,20 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   CODE_SIGNING_ALLOWED=NO
 ```
 
+UI tests launch the app in an isolated test mode with temporary storage and
+preferences, so they never touch your real Dock or divider library. They need a
+local code signature, so run them separately:
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  xcodebuild -project DockDivider.xcodeproj \
+  -scheme DockDivider \
+  -configuration Debug \
+  -destination 'platform=macOS' \
+  -only-testing:DockDividerUITests test \
+  CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES DEVELOPMENT_TEAM=
+```
+
 ### Release build
 
 Release builds use `ARCHS_STANDARD` (`arm64` + `x86_64`) and hardened runtime.

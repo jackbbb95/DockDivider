@@ -60,9 +60,18 @@ struct AppEnvironment {
     }
 
     static var live: AppEnvironment {
+        let processEnvironment = ProcessInfo.processInfo.environment
+
+        // UI tests launch a separate copy of the app. Redirect storage and
+        // preferences, and disable launch side effects, so a test run can never
+        // repair, stage into, or delete the developer's real divider bundles.
+        if processEnvironment["DOCKDIVIDER_UI_TEST"] == "1" {
+            return uiTest(processEnvironment)
+        }
+
         // The unit-test host must not stage into the real storage folder or
         // drive IconServices; its tests use an isolated AppEnvironment.
-        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let isRunningTests = processEnvironment["XCTestConfigurationFilePath"] != nil
             || NSClassFromString("XCTestCase") != nil
         let enabled = !isRunningTests
         return AppEnvironment(
@@ -79,6 +88,34 @@ struct AppEnvironment {
             persistsDraft: enabled,
             showsOnboarding: enabled,
             appliesFinderIcons: enabled
+        )
+    }
+
+    /// Isolated environment for the XCUITest target.
+    ///
+    /// The test runner supplies a temporary storage folder and a dedicated
+    /// defaults suite so state can survive a relaunch within one test without
+    /// touching the real app or Dock configuration.
+    private static func uiTest(_ environment: [String: String]) -> AppEnvironment {
+        let storagePath = environment["DOCKDIVIDER_UI_TEST_STORAGE"]
+            ?? FileManager.default.temporaryDirectory
+                .appendingPathComponent("DockDividerUITests", isDirectory: true)
+                .path
+        let suiteName = environment["DOCKDIVIDER_UI_TEST_DEFAULTS_SUITE"]
+            ?? "DockDivider.UITests"
+
+        return AppEnvironment(
+            userDefaults: UserDefaults(suiteName: suiteName)!,
+            applicationSupportDirectory: URL(fileURLWithPath: storagePath, isDirectory: true),
+            repairOnLaunch: false,
+            stagesOnLaunch: false,
+            stagesOnDraftChanges: false,
+            registerWithLaunchServices: false,
+            stagingDebounce: 0,
+            persistsDraft: false,
+            liveSet: .known([]),
+            showsOnboarding: environment["DOCKDIVIDER_UI_TEST_SHOW_ONBOARDING"] == "1",
+            appliesFinderIcons: false
         )
     }
 }

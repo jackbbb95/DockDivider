@@ -130,6 +130,7 @@ struct MainWindowView: View {
             .font(.caption2)
             .help("Review generated dividers that are no longer referenced by your Dock")
             .accessibilityLabel("Clean up unused dividers")
+            .accessibilityIdentifier("storage-cleanup-button")
 
             Button("Change…") {
                 appState.selectStorageDirectory()

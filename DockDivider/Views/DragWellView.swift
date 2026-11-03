@@ -226,6 +226,7 @@ struct DragWellView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("validation-warning")
 
                     Spacer(minLength: 0)
                 }

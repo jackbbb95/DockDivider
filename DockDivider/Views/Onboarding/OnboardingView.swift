@@ -30,6 +30,7 @@ struct OnboardingView: View {
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("onboarding-get-started")
             }
         }
         .padding(24)
