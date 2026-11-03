@@ -48,10 +48,12 @@ bar agent, or background process left behind.
   cleanup sheet.
 - **Accessibility** labels, keyboard-reachable drag fallback, and
   validation-before-drag for incomplete configurations.
-- **Tooltips are always visible.** macOS shows a hover tooltip pill for every
-  divider app bundle. Clearing the tooltip text does not remove the pill; it
-  only makes it blank. Only a true native spacer (no click action or tooltip)
-  avoids the tooltip entirely.
+
+> [!WARNING]
+> **The tooltip cannot be hidden.** macOS shows a hover tooltip pill for every
+> divider app bundle. Clearing the tooltip text does not remove the pill; it
+> only makes it blank. Only a true native spacer (no click action or tooltip)
+> avoids the tooltip entirely.
 
 ---
 
