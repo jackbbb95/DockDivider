@@ -15,8 +15,14 @@ concurrency:
 
 jobs:
   test:
-    name: Build and test
-    runs-on: macos-15
+    name: Test and build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS 14 is the oldest hosted image available. It exercises the
+        # deployment-target runtime without requiring a local VM.
+        os: [macos-14, macos-15]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
     steps:
@@ -48,13 +54,14 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results
+          name: test-results-${{ matrix.os }}
           path: |
             ${{ runner.temp }}/DockDividerTests.xcresult
             ${{ runner.temp }}/crashlogs
           retention-days: 7
 
       - name: Build universal Release
+        if: matrix.os == 'macos-15'
         run: |
           xcodebuild \
             -project DockDivider.xcodeproj \

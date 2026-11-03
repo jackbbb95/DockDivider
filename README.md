@@ -82,6 +82,10 @@ previewed on a real Dock surface, with an optional app and URL launcher on click
   filesystem-synchronized groups and the Swift 5 language mode)
 - No third-party dependencies
 
+Development and automated tests run on macOS 14, 15, and 27. macOS 13
+Ventura is supported on a best-effort basis; include your macOS version if you
+report an issue.
+
 DockDivider is distributed directly, outside the Mac App Store. The app is not
 sandboxed because it creates and repairs executable bundles in a folder you
 choose, and it ad-hoc signs each generated bundle so the Dock can launch it.
