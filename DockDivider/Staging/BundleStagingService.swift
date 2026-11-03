@@ -257,6 +257,14 @@ enum BundleStagingService {
             .appendingPathComponent("Contents/Resources/divider_runner")
         candidateURLs.append(appBundleResources)
 
+        // Some Xcode versions skip the Copy Files phase when code signing is
+        // disabled. In that case the test host can still reach the runner next
+        // to DockDivider.app in the build products directory.
+        let buildProductsRunner = Bundle.main.bundleURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("divider_runner")
+        candidateURLs.append(buildProductsRunner)
+
         return candidateURLs.first { fileManager.fileExists(atPath: $0.path) }
     }
 
