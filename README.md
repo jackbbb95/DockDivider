@@ -16,6 +16,7 @@ bar agent, or background process left behind.
 ![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-blue)
 ![Swift 5](https://img.shields.io/badge/Swift-5%20language%20mode-orange)
 ![Xcode 16+](https://img.shields.io/badge/Xcode-16%2B-blue)
+[![CI](https://github.com/jackbbb95/DockDivider/actions/workflows/ci.yml/badge.svg)](https://github.com/jackbbb95/DockDivider/actions/workflows/ci.yml)
 
 ---
 
@@ -100,16 +101,19 @@ choose, and it ad-hoc signs each generated bundle so the Dock can launch it.
 
 ## Install
 
-1. Download the latest `DockDivider-x.y.z.dmg` from
-   [GitHub Releases](https://github.com/jackbbb95/DockDivider/releases).
-2. Open the DMG and drag **DockDivider** into **Applications**.
-3. Launch it. Official release builds are signed with a Developer ID and
-   notarized, so Gatekeeper allows the first launch without a bypass.
+DockDivider is currently distributed as source only: there are no prebuilt
+release binaries. Build it from source using the steps below.
 
-If you build the app yourself, it is unsigned and macOS may require confirming
-it in **System Settings > Privacy & Security**. Actions that drive System
-Events (Toggle Dark Mode, Toggle Mute) may ask for Automation permission the
-first time; DockDivider does not need Accessibility or Full Disk Access.
+Signed and notarized builds require a paid Apple Developer Program membership
+and a Developer ID certificate. That release path is documented in
+[docs/RELEASE.md](docs/RELEASE.md), but it is not active yet. If a release is
+published later, it will be linked from
+[GitHub Releases](https://github.com/jackbbb95/DockDivider/releases).
+
+A source build is unsigned, so macOS may require confirming it in
+**System Settings > Privacy & Security**. Actions that drive System Events
+(Toggle Dark Mode, Toggle Mute) may ask for Automation permission the first
+time; DockDivider does not need Accessibility or Full Disk Access.
 
 ---
 
@@ -122,7 +126,9 @@ open DockDivider.xcodeproj
 ```
 
 Select the **DockDivider** scheme and **My Mac**, then press `Cmd+R`.
-Run the test suite with `Cmd+U`, or from the command line:
+The checked-in project intentionally has no Apple team set. If Xcode asks,
+choose your own team or **Sign to Run Locally**; signing is not required for
+local development. Run the test suite with `Cmd+U`, or from the command line:
 
 ```bash
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -181,6 +187,19 @@ after signing, so `codesign --verify` succeeds while `codesign --verify
 See [docs/RELEASE.md](docs/RELEASE.md) for notarization setup, the
 `scripts/release.sh` command, verification steps, and the GitHub release
 checklist. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+Signed, notarized releases require a paid Apple Developer Program membership,
+which this project does not currently use. Treat that runbook as the future
+path until the membership and Developer ID certificate exist.
+
+---
+
+## Architecture
+
+For a visual walkthrough of the editor, state machine, staging pipeline,
+storage layer, and generated artifacts, open
+[docs/architecture.html](docs/architecture.html) in a browser. It is a single
+self-contained file with no server or build step.
 
 ---
 
@@ -257,7 +276,7 @@ bundles run only when you click them in the Dock. Actions that drive System
 Events (Toggle Dark Mode, Toggle Mute) are AppleScript, so macOS may ask for
 Automation permission; the divider still works without it, minus that action.
 See `DockDivider/PrivacyInfo.xcprivacy` for the required-reason API
-declarations.
+declarations. For vulnerability reports, see [SECURITY.md](SECURITY.md).
 
 ---
 

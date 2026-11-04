@@ -1,0 +1,1186 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DockDivider — Architecture Walkthrough</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f3ee;
+    --bg2: #ebe7df;
+    --panel: #fffdf8;
+    --panel2: #f8f5ef;
+    --ink: #151b22;
+    --muted: #5d6672;
+    --faint: #8b939c;
+    --border: #ded8cc;
+    --border2: #c9c1b2;
+    --bar: rgba(245, 243, 238, .84);
+    --code-bg: #f0ece4;
+    --shadow: 0 1px 2px rgba(18, 24, 30, .05), 0 18px 40px -28px rgba(18, 24, 30, .35);
+    --c-editor: #2f6fed;
+    --c-state: #7a4bd3;
+    --c-domain: #0b8d80;
+    --c-build: #bd6a12;
+    --c-storage: #bb4567;
+    --c-runtime: #3c8650;
+    --radius: 14px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme="auto"] {
+      --bg: #0b0f14;
+      --bg2: #0f141b;
+      --panel: #121820;
+      --panel2: #171e27;
+      --ink: #e8edf3;
+      --muted: #9aa7b5;
+      --faint: #6f7c8a;
+      --border: #232d39;
+      --border2: #33404e;
+      --bar: rgba(11, 15, 20, .84);
+      --code-bg: #0e141b;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 24px 50px -30px rgba(0, 0, 0, .8);
+      --c-editor: #6ea1ff;
+      --c-state: #a985ff;
+      --c-domain: #3dc6b6;
+      --c-build: #e89a45;
+      --c-storage: #ef7a99;
+      --c-runtime: #6cc484;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0f14;
+    --bg2: #0f141b;
+    --panel: #121820;
+    --panel2: #171e27;
+    --ink: #e8edf3;
+    --muted: #9aa7b5;
+    --faint: #6f7c8a;
+    --border: #232d39;
+    --border2: #33404e;
+    --bar: rgba(11, 15, 20, .84);
+    --code-bg: #0e141b;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 24px 50px -30px rgba(0, 0, 0, .8);
+    --c-editor: #6ea1ff;
+    --c-state: #a985ff;
+    --c-domain: #3dc6b6;
+    --c-build: #e89a45;
+    --c-storage: #ef7a99;
+    --c-runtime: #6cc484;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background:
+      radial-gradient(1100px 520px at 12% -8%, rgba(47, 111, 237, .10), transparent 65%),
+      radial-gradient(900px 500px at 92% 2%, rgba(11, 141, 128, .08), transparent 60%),
+      var(--bg);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: inherit; }
+  button { font: inherit; color: inherit; }
+  code {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: .08em .34em;
+    white-space: nowrap;
+  }
+  .shell { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--bar);
+    -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    backdrop-filter: blur(16px) saturate(1.4);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner { display: flex; align-items: center; gap: 22px; height: 58px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14px; letter-spacing: -.01em; text-decoration: none; white-space: nowrap; }
+  .mark { width: 24px; height: 24px; border-radius: 7px; background: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+  .mark i { display: block; width: 2px; height: 12px; border-radius: 2px; background: var(--bg); }
+  .mark i:first-child { height: 7px; opacity: .65; }
+  .brand span { color: var(--faint); font-weight: 500; }
+  .topbar nav { display: flex; align-items: center; gap: 18px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { font-size: 12px; color: var(--muted); text-decoration: none; white-space: nowrap; padding: 4px 0; border-bottom: 1px solid transparent; transition: color .15s, border-color .15s; }
+  .topbar nav a:hover, .topbar nav a.is-active { color: var(--ink); border-bottom-color: var(--ink); }
+  .theme-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); background: var(--panel);
+    border-radius: 999px; padding: 5px 11px 5px 8px; cursor: pointer;
+    font-size: 11px; color: var(--muted); white-space: nowrap;
+    transition: border-color .15s, color .15s;
+  }
+  .theme-btn:hover { border-color: var(--border2); color: var(--ink); }
+  .theme-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border2); background: linear-gradient(90deg, var(--ink) 50%, transparent 50%); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 68px 0 34px; }
+  .hero-grid { display: grid; grid-template-columns: 1.3fr .7fr; gap: 44px; align-items: end; }
+  .eyebrow {
+    display: block;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--muted); margin: 0 0 14px;
+  }
+  .eyebrow::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 2px; background: var(--c-editor); margin-right: 8px; vertical-align: 1px; }
+  h1 { font-size: clamp(38px, 6vw, 62px); line-height: 1.02; letter-spacing: -.035em; margin: 0 0 18px; font-weight: 720; }
+  h1 em { font-style: normal; color: var(--muted); font-weight: 500; }
+  .hero p.lede { max-width: 680px; margin: 0; color: var(--muted); font-size: 16px; line-height: 1.62; }
+  .hero p.lede strong { color: var(--ink); font-weight: 600; }
+
+  .dock-mock { user-select: none; }
+  .dock-glass {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    height: 78px; padding: 0 13px;
+    border: 1px solid var(--border2);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,.06));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), var(--shadow);
+  }
+  .app-dot { width: 34px; height: 34px; border-radius: 9px; box-shadow: 0 2px 5px rgba(0,0,0,.18); flex: none; }
+  .app-dot.a1 { background: linear-gradient(145deg, #7cc7ff, #2f6fed); }
+  .app-dot.a2 { background: linear-gradient(145deg, #ffd66e, #e2862a); }
+  .app-dot.a3 { background: linear-gradient(145deg, #b7a4ff, #7a4bd3); }
+  .app-dot.a4 { background: linear-gradient(145deg, #7ee0c9, #0b8d80); }
+  .dock-divider { width: 2px; height: 34px; border-radius: 2px; background: var(--ink); opacity: .5; margin: 0 2px; flex: none; }
+  .app-dot.label {
+    display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1.5px dashed var(--border2);
+    color: var(--muted); font-family: var(--mono); font-size: 9px; letter-spacing: .08em;
+    box-shadow: none;
+  }
+  .dock-caption { margin: 10px 2px 0; font-size: 10.5px; color: var(--faint); font-family: var(--mono); letter-spacing: .02em; }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 40px; }
+  .stat { border: 1px solid var(--border); background: var(--panel); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .stat b { display: block; font-family: var(--mono); font-size: 22px; letter-spacing: -.03em; font-weight: 600; }
+  .stat span { display: block; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .09em; margin-top: 3px; }
+
+  /* ---------- sections ---------- */
+  section { scroll-margin-top: 78px; }
+  .section { padding: 56px 0 10px; border-top: 1px solid var(--border); margin-top: 46px; }
+  .section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 26px; flex-wrap: wrap; margin-bottom: 22px; }
+  .section-head .eyebrow { margin-bottom: 9px; }
+  h2 { font-size: clamp(25px, 3.3vw, 34px); line-height: 1.12; letter-spacing: -.025em; margin: 0; font-weight: 680; }
+  .lede { max-width: 760px; margin: 8px 0 0; color: var(--muted); font-size: 14.5px; line-height: 1.62; }
+  .lede code { white-space: normal; }
+
+  .callout {
+    display: flex; gap: 12px; align-items: flex-start;
+    border: 1px solid var(--border); border-left: 3px solid var(--c-build);
+    background: var(--panel); border-radius: 10px; padding: 12px 14px;
+    color: var(--muted); font-size: 12.5px; line-height: 1.55; margin-top: 14px;
+  }
+  .callout strong { color: var(--ink); font-weight: 600; }
+  .callout .ico { font-family: var(--mono); color: var(--c-build); font-weight: 700; line-height: 1.4; }
+
+  /* ---------- lane map ---------- */
+  .lane-map { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); overflow: hidden; box-shadow: var(--shadow); }
+  .lane { display: grid; grid-template-columns: 158px 1fr; border-top: 1px solid var(--border); }
+  .lane:first-child { border-top: 0; }
+  .lane-head { display: flex; gap: 10px; align-items: flex-start; padding: 14px 14px 14px 16px; border-right: 1px solid var(--border); background: linear-gradient(180deg, var(--lane-soft), transparent 150%); }
+  .lane-num { font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: var(--lane); padding-top: 2px; letter-spacing: .04em; }
+  .lane-head h3 { font-size: 13px; margin: 0 0 2px; letter-spacing: -.01em; }
+  .lane-head p { margin: 0; font-size: 10px; color: var(--muted); line-height: 1.4; }
+  .lane-body { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; align-items: stretch; }
+  .node {
+    flex: 1 1 148px; min-width: 0; text-align: left; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel2); border-radius: 9px;
+    padding: 8px 10px; display: flex; flex-direction: column; gap: 2px;
+    transition: opacity .22s, filter .22s, border-color .15s, background .15s, transform .15s, box-shadow .15s;
+  }
+  .node:hover { border-color: var(--border2); background: var(--panel); }
+  .node:focus-visible { outline: 2px solid var(--lane); outline-offset: 2px; }
+  .n-name { font-size: 12px; font-weight: 620; letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .n-sub { font-size: 10px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lane[data-lane="editor"] { --lane: var(--c-editor); --lane-soft: rgba(47, 111, 237, .10); }
+  .lane[data-lane="state"] { --lane: var(--c-state); --lane-soft: rgba(122, 75, 211, .10); }
+  .lane[data-lane="domain"] { --lane: var(--c-domain); --lane-soft: rgba(11, 141, 128, .10); }
+  .lane[data-lane="build"] { --lane: var(--c-build); --lane-soft: rgba(189, 106, 18, .11); }
+  .lane[data-lane="storage"] { --lane: var(--c-storage); --lane-soft: rgba(187, 69, 103, .10); }
+  .lane[data-lane="runtime"] { --lane: var(--c-runtime); --lane-soft: rgba(60, 134, 80, .11); }
+
+  .lane-map.has-focus .node { opacity: .34; filter: saturate(.45); }
+  .lane-map.has-focus .node.is-hot { opacity: 1; filter: none; border-color: var(--lane); background: var(--lane-soft); outline: 2px solid var(--lane); outline-offset: 1px; box-shadow: 0 8px 18px -12px var(--lane); transform: translateY(-1px); }
+  .node.is-selected { border-color: var(--lane); background: var(--lane-soft); }
+  .lane-map.has-focus .node.is-selected { opacity: 1; filter: none; }
+
+  .connector { display: flex; align-items: center; justify-content: center; gap: 10px; height: 30px; padding: 0 14px; }
+  .connector::before, .connector::after { content: ""; flex: 1; border-top: 1px dashed var(--border2); }
+  .connector span { font-family: var(--mono); font-size: 9.5px; color: var(--faint); letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
+
+  .node-info {
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+    margin-top: 10px; padding: 10px 13px; min-height: 42px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--panel2);
+    font-size: 12px; color: var(--muted); line-height: 1.5;
+  }
+  .node-info .hint { color: var(--faint); }
+  .node-info-name { font-weight: 650; color: var(--ink); }
+  .node-info code { white-space: normal; }
+  .node-info .role { flex: 1 1 340px; }
+
+  /* ---------- walkthrough ---------- */
+  .walk-head-controls { display: flex; align-items: center; gap: 8px; }
+  .step-btn {
+    width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--panel); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    transition: border-color .15s, background .15s;
+  }
+  .step-btn:hover { border-color: var(--border2); background: var(--panel2); }
+  .step-count { font-family: var(--mono); font-size: 11px; color: var(--muted); min-width: 48px; text-align: center; }
+  .walk-grid { display: grid; grid-template-columns: 292px minmax(0, 1fr); gap: 22px; align-items: start; }
+  .step-list { display: flex; flex-direction: column; gap: 6px; }
+  .step-tab {
+    display: flex; gap: 11px; align-items: flex-start; text-align: left; cursor: pointer;
+    background: transparent; border: 1px solid transparent; border-left: 2px solid transparent;
+    border-radius: 8px; padding: 9px 10px; transition: background .15s, border-color .15s;
+  }
+  .step-tab:hover { background: var(--panel2); }
+  .step-tab.is-active { background: var(--panel); border-color: var(--border); border-left-color: var(--c-editor); box-shadow: var(--shadow); }
+  .step-num { font-family: var(--mono); font-size: 10px; color: var(--faint); padding-top: 2px; letter-spacing: .05em; }
+  .step-tab.is-active .step-num { color: var(--c-editor); }
+  .step-title { display: block; font-size: 13px; font-weight: 620; letter-spacing: -.01em; }
+  .step-sub { display: block; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+  .step-detail {
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel);
+    padding: 24px 26px; box-shadow: var(--shadow); min-height: 460px;
+  }
+  .detail-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .detail-kicker { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--c-editor); }
+  .detail-count { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .step-detail h3 { font-size: 24px; letter-spacing: -.025em; margin: 7px 0 16px; line-height: 1.15; }
+  .mini-flow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 11px 12px; margin: 0 0 18px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; }
+  .flow-chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .flow-chip i { width: 7px; height: 7px; border-radius: 2px; background: currentColor; flex: none; }
+  .flow-arrow { color: var(--faint); font-size: 11px; }
+  .tone-editor { color: var(--c-editor); }
+  .tone-state { color: var(--c-state); }
+  .tone-domain { color: var(--c-domain); }
+  .tone-build { color: var(--c-build); }
+  .tone-storage { color: var(--c-storage); }
+  .tone-runtime { color: var(--c-runtime); }
+  .step-detail p { margin: 0 0 12px; font-size: 13.5px; line-height: 1.68; color: var(--muted); }
+  .step-detail p strong { color: var(--ink); font-weight: 600; }
+  .step-detail p code { white-space: normal; }
+  .watch { border-left: 3px solid var(--c-build); background: var(--panel2); border-radius: 0 8px 8px 0; padding: 10px 13px; margin: 16px 0; }
+  .watch-label { display: block; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--c-build); margin-bottom: 3px; }
+  .watch p { margin: 0; font-size: 12px; line-height: 1.55; }
+  .file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+  .file-chips code { font-size: 10px; color: var(--muted); background: var(--panel2); }
+
+  /* ---------- paths ---------- */
+  .path-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .path-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); padding: 20px 20px 18px; box-shadow: var(--shadow); }
+  .path-tag { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--path-c, var(--muted)); margin-bottom: 8px; }
+  .path-tag::before { content: ""; width: 6px; height: 6px; border-radius: 2px; background: currentColor; }
+  .path-card h3 { font-size: 17px; letter-spacing: -.015em; margin: 0 0 5px; }
+  .path-card > p { margin: 0 0 14px; font-size: 12px; color: var(--muted); line-height: 1.55; }
+  .path-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .path-steps li { position: relative; padding: 0 0 13px 24px; font-size: 11.5px; color: var(--muted); line-height: 1.5; }
+  .path-steps li:last-child { padding-bottom: 0; }
+  .path-steps li::before { content: ""; position: absolute; left: 4px; top: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--panel); border: 1.5px solid var(--path-c, var(--border2)); }
+  .path-steps li::after { content: ""; position: absolute; left: 7px; top: 14px; bottom: 0; width: 1px; background: var(--border); }
+  .path-steps li:last-child::after { display: none; }
+  .path-steps strong { color: var(--ink); font-weight: 600; }
+  .path-steps code { font-size: .92em; white-space: normal; }
+  .path-card a, .path-card a code { text-decoration: none; }
+
+  /* ---------- modules ---------- */
+  .module-tools { display: flex; gap: 8px; }
+  .ghost-btn { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 6px 10px; font-size: 11px; color: var(--muted); cursor: pointer; }
+  .ghost-btn:hover { border-color: var(--border2); color: var(--ink); }
+  .module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
+  details.folder { border: 1px solid var(--border); border-radius: 11px; background: var(--panel); overflow: hidden; }
+  details.folder[open] { background: var(--panel); box-shadow: var(--shadow); }
+  details.folder summary { list-style: none; cursor: pointer; padding: 13px 15px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+  details.folder summary::-webkit-details-marker { display: none; }
+  details.folder summary::after { content: "+"; font-family: var(--mono); font-size: 14px; color: var(--faint); grid-column: 2; grid-row: 1; }
+  details.folder[open] summary::after { content: "−"; }
+  .folder-name { font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: -.01em; }
+  .folder-count { font-family: var(--mono); font-size: 9.5px; color: var(--faint); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: 7px; vertical-align: 1px; }
+  .folder-sub { grid-column: 1; font-size: 10.5px; color: var(--muted); line-height: 1.45; }
+  .file-list { border-top: 1px solid var(--border); padding: 6px 15px 10px; }
+  .file-row { padding: 7px 0; border-bottom: 1px solid var(--border); display: grid; grid-template-columns: 1fr; gap: 1px; }
+  .file-row:last-child { border-bottom: 0; }
+  .file-row code { background: none; border: 0; padding: 0; font-size: 10.5px; color: var(--ink); font-weight: 600; }
+  .file-row span { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- artifacts ---------- */
+  .artifact-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .artifact-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); padding: 20px; box-shadow: var(--shadow); min-width: 0; }
+  .artifact-card h3 { margin: 0 0 3px; font-size: 17px; letter-spacing: -.015em; }
+  .artifact-card > p { margin: 0 0 14px; font-size: 11.5px; color: var(--muted); }
+  .artifact-card > p code { white-space: normal; overflow-wrap: anywhere; }
+  .tree { font-family: var(--mono); font-size: 10.5px; line-height: 1.85; border: 1px solid var(--border); background: var(--panel2); border-radius: 9px; padding: 12px 13px; overflow-x: auto; }
+  .t-row { white-space: nowrap; }
+  .t-row.d1 { padding-left: 15px; }
+  .t-row.d2 { padding-left: 30px; }
+  .t-row.d3 { padding-left: 45px; }
+  .t-row.d4 { padding-left: 60px; }
+  .t-name { color: var(--ink); }
+  .t-dir { color: var(--ink); font-weight: 600; }
+  .t-note { color: var(--faint); font-family: var(--sans); font-size: 10px; margin-left: 9px; }
+  .tree-note { margin: 10px 0 0; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+  .tree-note strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- concurrency ---------- */
+  .conc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .conc-card { border: 1px solid var(--border); border-top: 3px solid var(--conc, var(--c-editor)); border-radius: 11px; background: var(--panel); padding: 16px; box-shadow: var(--shadow); }
+  .conc-card h3 { margin: 0 0 2px; font-size: 14px; }
+  .conc-card > p { margin: 0 0 11px; font-size: 10.5px; color: var(--muted); }
+  .conc-card ul { margin: 0; padding-left: 15px; display: flex; flex-direction: column; gap: 5px; }
+  .conc-card li { font-size: 11px; color: var(--muted); line-height: 1.45; }
+  .conc-card li code { white-space: normal; }
+
+  /* ---------- invariants ---------- */
+  .inv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .inv { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); padding: 14px 15px; display: grid; grid-template-columns: 28px 1fr; gap: 10px; }
+  .inv b { font-family: var(--mono); font-size: 10px; color: var(--c-build); padding-top: 2px; }
+  .inv h3 { margin: 0 0 3px; font-size: 12.5px; letter-spacing: -.005em; }
+  .inv p { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+  /* ---------- file map ---------- */
+  .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow-x: auto; background: var(--panel); box-shadow: var(--shadow); }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 580px; }
+  th { text-align: left; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); font-weight: 500; padding: 11px 14px; border-bottom: 1px solid var(--border); background: var(--panel2); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; color: var(--muted); }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { color: var(--ink); font-weight: 550; width: 32%; }
+  td code { white-space: normal; }
+
+  footer { margin-top: 56px; padding: 22px 0 42px; border-top: 1px solid var(--border); color: var(--faint); font-size: 11px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  footer code { background: none; border: 0; padding: 0; color: var(--muted); }
+
+  @media (max-width: 980px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 30px; }
+    .dock-mock { max-width: 460px; }
+    .walk-grid { grid-template-columns: 1fr; }
+    .step-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .step-detail { min-height: 0; }
+    .conc-grid { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .shell { padding: 0 16px; }
+    .topbar nav { display: none; }
+    .hero { padding-top: 46px; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .lane { grid-template-columns: 1fr; }
+    .lane-head { border-right: 0; border-bottom: 1px solid var(--border); }
+    .lane-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .node { flex: none; }
+    .connector span { white-space: normal; text-align: center; }
+    .path-grid, .module-grid, .artifact-grid, .inv-grid { grid-template-columns: 1fr; }
+    .step-list { grid-template-columns: 1fr; }
+    .step-detail { padding: 18px; }
+    .step-detail h3 { font-size: 21px; }
+  }
+  @media (max-width: 440px) {
+    .lane-body { grid-template-columns: 1fr; }
+    .brand span { display: none; }
+    .stats { gap: 8px; }
+    .stat { padding: 11px 12px; }
+    .stat b { font-size: 19px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top"><span class="mark"><i></i><i></i></span> DockDivider <span>/ architecture</span></a>
+      <nav aria-label="Sections">
+        <a href="#map">Map</a>
+        <a href="#walkthrough">Walkthrough</a>
+        <a href="#paths">Paths</a>
+        <a href="#modules">Modules</a>
+        <a href="#artifacts">Artifacts</a>
+        <a href="#concurrency">Threads</a>
+        <a href="#invariants">Rules</a>
+        <a href="#files">File map</a>
+      </nav>
+      <button class="theme-btn" id="themeToggle" type="button" aria-label="Theme: auto. Click to change.">
+        <span class="theme-dot" aria-hidden="true"></span><span id="themeLabel">Auto</span>
+      </button>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero" aria-labelledby="heroTitle">
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">DockDivider · macOS 13+ · Swift 5 · no dependencies</p>
+          <h1 id="heroTitle">A design tool that<br><em>builds Dock tiles.</em></h1>
+          <p class="lede">DockDivider turns a SwiftUI editor into self-contained artifacts the Dock can own. The editor edits <strong>one value</strong>; a revisioned pipeline renders it, writes and signs an app bundle, and hands exactly one file to a drag session. No daemon, no menu bar agent, no background process left behind.</p>
+        </div>
+        <div class="dock-mock" aria-hidden="true">
+          <div class="dock-glass">
+            <span class="app-dot a1"></span>
+            <span class="app-dot a2"></span>
+            <span class="app-dot a3"></span>
+            <span class="dock-divider"></span>
+            <span class="app-dot a4"></span>
+            <span class="app-dot label">DEV</span>
+          </div>
+          <p class="dock-caption">one generated tile · zero background processes</p>
+        </div>
+      </div>
+      <div class="stats" aria-label="Codebase at a glance">
+        <div class="stat"><b>34</b><span>app + runner</span></div>
+        <div class="stat"><b>7.2k</b><span>app lines</span></div>
+        <div class="stat"><b>56</b><span>unit tests</span></div>
+        <div class="stat"><b>0</b><span>third-party deps</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="map" aria-labelledby="mapTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">The map</p>
+          <h2 id="mapTitle">Six layers, one direction of flow</h2>
+          <p class="lede">The UI never writes bundles. The pipeline never reads views. State receives a draft snapshot and a storage URL, then decides when the filesystem is touched.</p>
+        </div>
+      </div>
+
+      <div class="lane-map" id="laneMap">
+        <div class="lane" data-lane="editor">
+          <div class="lane-head"><span class="lane-num">01</span><div><h3>Editor</h3><p>SwiftUI · @MainActor</p></div></div>
+          <div class="lane-body">
+            <button class="node" type="button" data-node="main-window" data-file="Views/MainWindowView.swift" data-role="Composes the two-column editor, sheets, and the storage footer."><span class="n-name">MainWindowView</span><span class="n-sub">editor shell · sheets</span></button>
+            <button class="node" type="button" data-node="style" data-file="Views/Settings/StyleSelectorView.swift" data-role="Chooses one of six divider styles: line, dashed, dot, label, spacer, or image."><span class="n-name">StyleSelectorView</span><span class="n-sub">six style chips</span></button>
+            <button class="node" type="button" data-node="appearance" data-file="Views/Settings/AppearanceControlsView.swift" data-role="Edits only the controls the selected style supports, and imports and normalizes artwork."><span class="n-name">AppearanceControls</span><span class="n-sub">geometry · tint · label</span></button>
+            <button class="node" type="button" data-node="actions" data-file="Views/Settings/ClickActionPickerView.swift" data-role="Edits ActionConfig with per-action validation and availability filtering."><span class="n-name">ClickActionPicker</span><span class="n-sub">apps · shortcut · shell</span></button>
+            <button class="node" type="button" data-node="preview" data-file="Views/DockPreviewBar.swift" data-role="Renders a wallpaper-backed Dock preview with a preview-only light/dark toggle."><span class="n-name">DockPreviewBar</span><span class="n-sub">simulated Dock glass</span></button>
+            <button class="node" type="button" data-node="dragwell" data-file="Views/DragWellView.swift" data-role="Hosts the transparent AppKit NSDraggingSource that hands the staged URL to the Dock."><span class="n-name">DragWellView</span><span class="n-sub">AppKit drag source</span></button>
+          </div>
+        </div>
+
+        <div class="connector"><span>↓ @Published draft · 250 ms debounce</span></div>
+
+        <div class="lane" data-lane="state">
+          <div class="lane-head"><span class="lane-num">02</span><div><h3>State</h3><p>ObservableObject · @MainActor</p></div></div>
+          <div class="lane-body">
+            <button class="node" type="button" data-node="appstate" data-file="App/AppState.swift" data-role="Owns the draft, debounces staging and persistence, refreshes the storage summary, and forwards collaborator state to views."><span class="n-name">AppState</span><span class="n-sub">draft · lifecycle</span></button>
+            <button class="node" type="button" data-node="staging" data-file="Staging/StagingController.swift" data-role="Runs revisioned staging passes, publishes one ready artifact, owns the drag URL, and deletes replaced or cancelled bundles."><span class="n-name">StagingController</span><span class="n-sub">revisioned state machine</span></button>
+            <button class="node" type="button" data-node="storage-location" data-file="Storage/StorageLocationStore.swift" data-role="Owns the selected storage root, security-scoped bookmark lifetime, and the container warning."><span class="n-name">StorageLocationStore</span><span class="n-sub">bookmark + scope</span></button>
+            <button class="node" type="button" data-node="repairer" data-file="Maintenance/BundleRepairer.swift" data-role="Scans the active and legacy folders on launch or activation, at most once every five minutes."><span class="n-name">BundleRepairer</span><span class="n-sub">throttled repair</span></button>
+            <button class="node" type="button" data-node="persistence" data-file="Storage/DraftPersistence.swift" data-role="Writes the last design and its artwork outside UserDefaults."><span class="n-name">DraftPersistence</span><span class="n-sub">Draft.json + sidecar</span></button>
+          </div>
+        </div>
+
+        <div class="connector"><span>↓ snapshot · validate · RenderKey</span></div>
+
+        <div class="lane" data-lane="domain">
+          <div class="lane-head"><span class="lane-num">03</span><div><h3>Domain</h3><p>Pure Codable value types · Sendable</p></div></div>
+          <div class="lane-body">
+            <button class="node" type="button" data-node="model" data-file="Models/DividerModel.swift" data-role="One Codable value describes the design: style, orientation, geometry, color, label, artwork, and action."><span class="n-name">DividerModel</span><span class="n-sub">the design value</span></button>
+            <button class="node" type="button" data-node="validation" data-file="Models/DividerValidation.swift" data-role="Explains why a design cannot work yet: no image, no URL, empty command, missing shortcut."><span class="n-name">DividerValidation</span><span class="n-sub">blocks no-op drags</span></button>
+            <button class="node" type="button" data-node="actionconfig" data-file="Shared/ActionConfig.swift" data-role="Compiled into both the app and the runner so the editor and runtime cannot drift."><span class="n-name">ActionConfig</span><span class="n-sub">shared wire format</span></button>
+            <button class="node" type="button" data-node="renderkey" data-file="Rendering/RenderKey.swift" data-role="Hashes only fields that affect pixels, so metadata edits reuse cached artwork."><span class="n-name">RenderKey</span><span class="n-sub">pixel identity</span></button>
+          </div>
+        </div>
+
+        <div class="connector"><span>↓ pixels + action configuration</span></div>
+
+        <div class="lane" data-lane="build">
+          <div class="lane-head"><span class="lane-num">04</span><div><h3>Build</h3><p>Main-actor façade + detached work</p></div></div>
+          <div class="lane-body">
+            <button class="node" type="button" data-node="iconrenderer" data-file="Generator/IconRenderer.swift" data-role="Draws every style into CGImages and packs ten ICNS slots from 16 to 1024 pixels."><span class="n-name">IconRenderer</span><span class="n-sub">draws · ICNS</span></button>
+            <button class="node" type="button" data-node="rendercache" data-file="Rendering/RenderCache.swift" data-role="Caches 64 rendered images, 12 ICNS payloads, and 8 decoded source images in bounded LRUs."><span class="n-name">RenderCache</span><span class="n-sub">bounded LRUs</span></button>
+            <button class="node" type="button" data-node="imageproc" data-file="Rendering/CustomImageProcessor.swift" data-role="Normalizes imported art to a 1024 px PNG with ImageIO; AppKit rasterizes SVG."><span class="n-name">CustomImageProcessor</span><span class="n-sub">normalize once</span></button>
+            <button class="node" type="button" data-node="stager" data-file="Staging/BundleStagingService.swift" data-role="Builds inside .staging-UUID, writes contents, strips xattrs, ad-hoc signs, and renames into place."><span class="n-name">BundleStagingService</span><span class="n-sub">atomic build + sign</span></button>
+            <button class="node" type="button" data-node="synthesizer" data-file="Generator/BundleSynthesizer.swift" data-role="Applies Finder icons and filesystem notifications on main, and computes and applies repair plans."><span class="n-name">BundleSynthesizer</span><span class="n-sub">AppKit façade · repair</span></button>
+          </div>
+        </div>
+
+        <div class="connector"><span>↓ atomic rename + ownership marker</span></div>
+
+        <div class="lane" data-lane="storage">
+          <div class="lane-head"><span class="lane-num">05</span><div><h3>Storage</h3><p>File system · com.apple.dock</p></div></div>
+          <div class="lane-body">
+            <button class="node" type="button" data-node="maintenance" data-file="Storage/StorageMaintenance.swift" data-role="Lists only managed items, marks live ones, and moves confirmed orphans to the Trash."><span class="n-name">StorageMaintenance</span><span class="n-sub">census + cleanup</span></button>
+            <button class="node" type="button" data-node="census" data-file="Storage/StorageCensus.swift" data-role="Value types for storage items and the source of the Dock's live path set."><span class="n-name">StorageCensus</span><span class="n-sub">items + live set</span></button>
+            <button class="node" type="button" data-node="marker" data-file="Storage/BundleMarker.swift" data-role="Ownership marker written into every new bundle; legacy bundles are detected by their runner."><span class="n-name">BundleMarker</span><span class="n-sub">.dockdivider.json</span></button>
+            <button class="node" type="button" data-node="live" data-file="Storage/DockLiveItems.swift" data-role="Collects file-data URLs from persistent-apps and persistent-others; nil disables cleanup."><span class="n-name">DockLiveItems</span><span class="n-sub">reads com.apple.dock</span></button>
+          </div>
+        </div>
+
+        <div class="connector"><span>↓ drag a file URL into the Dock</span></div>
+
+        <div class="lane" data-lane="runtime">
+          <div class="lane-head"><span class="lane-num">06</span><div><h3>macOS</h3><p>Artifacts · separate process</p></div></div>
+          <div class="lane-body">
+            <button class="node" type="button" data-node="folder" data-file="Storage/StorageLayout.swift" data-role="Default is Application Support/DockDividers; a custom root gets a DockDividers subfolder."><span class="n-name">DockDividers folder</span><span class="n-sub">storage on disk</span></button>
+            <button class="node" type="button" data-node="appbundle" data-file="Staging/BundleStagingService.swift" data-role="Contains the runner, icon, action config, optional artwork, model JSON, and ownership marker."><span class="n-name">Staged .app</span><span class="n-sub">the draggable artifact</span></button>
+            <button class="node" type="button" data-node="spacer" data-file="Staging/BundleStagingService.swift" data-role="A true native spacer: an empty trigger file with no click action and no hover tooltip."><span class="n-name">.dockspace tile</span><span class="n-sub">native · no tooltip</span></button>
+            <button class="node" type="button" data-node="dock" data-file="macOS Dock.app" data-role="A dropped file becomes a Dock tile; clicking it launches the bundle executable."><span class="n-name">Dock.app</span><span class="n-sub">owns the tile</span></button>
+            <button class="node" type="button" data-node="runner" data-file="divider_runner/main.swift" data-role="Reads ActionConfig.json and dispatches one action, then exits."><span class="n-name">divider_runner</span><span class="n-sub">separate process</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="node-info" id="nodeInfo" aria-live="polite">
+        <span class="hint">Click any block for its file and role. The walkthrough below highlights the path for each step.</span>
+      </div>
+
+      <div class="callout">
+        <span class="ico">↳</span>
+        <div><strong>The one-way rule.</strong> Views mutate a value and call a few <code>AppState</code> methods. They never construct bundles. The pipeline receives a <code>DividerModel</code> snapshot and an output directory; it never reads a view or a binding. That boundary is what makes the pipeline testable in isolation.</div>
+      </div>
+    </section>
+
+    <section class="section" id="walkthrough" aria-labelledby="walkTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Walkthrough</p>
+          <h2 id="walkTitle">Follow one divider from slider to Dock</h2>
+          <p class="lede">Seven moments between moving a control and clicking the finished tile. Use the arrows or the list; each step highlights its blocks in the map above.</p>
+        </div>
+        <div class="walk-head-controls">
+          <button class="step-btn" id="prevStep" type="button" aria-label="Previous step">←</button>
+          <span class="step-count" id="stepCounter">1 / 7</span>
+          <button class="step-btn" id="nextStep" type="button" aria-label="Next step">→</button>
+        </div>
+      </div>
+
+      <div class="walk-grid">
+        <div class="step-list" id="stepList" role="tablist" aria-label="Walkthrough steps"></div>
+        <article class="step-detail" id="stepDetail" role="tabpanel" aria-label="Step detail" aria-live="polite"></article>
+      </div>
+    </section>
+
+    <section class="section" id="paths" aria-labelledby="pathsTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Background paths</p>
+          <h2 id="pathsTitle">What else runs, and when</h2>
+          <p class="lede">Staging is the hot path. Four quieter paths keep artifacts correct: choosing the artifact class, repairing old bundles, cleaning up orphans, and moving the storage folder.</p>
+        </div>
+      </div>
+
+      <div class="path-grid">
+        <article class="path-card" style="--path-c: var(--c-runtime)">
+          <span class="path-tag">artifacts</span>
+          <h3>Native spacer or app bundle?</h3>
+          <p>A spacer is the only artifact class with no tooltip. Adding a tooltip or click action silently changes the class.</p>
+          <ol class="path-steps">
+            <li><strong>Native path.</strong> Style is Spacer, tooltip is empty, and action is <code>.none</code>: write an empty <code>.dockspace</code>, <code>.docksmallspace</code>, or <code>.dockflexspace</code> file.</li>
+            <li><strong>Dock response.</strong> Dock.app instantiates a true <code>DOCKSpacerTile</code>: no hover pill, no click, no app bundle.</li>
+            <li><strong>App path.</strong> Anything else becomes a synthesized <code>.app</code> with an <code>ActionConfig.json</code>, even when the action is <code>.none</code>.</li>
+            <li><strong>Trade-off.</strong> macOS shows a hover pill for every app tile. Clearing the tooltip text makes it blank, not absent.</li>
+          </ol>
+        </article>
+
+        <article class="path-card" style="--path-c: var(--c-storage)">
+          <span class="path-tag">maintenance</span>
+          <h3>Repair old bundles</h3>
+          <p>Launch and activation repair keeps bundles compatible without blocking the editor.</p>
+          <ol class="path-steps">
+            <li><strong>Trigger.</strong> App launch or <code>didBecomeActive</code>. Repeat passes for the same folder are ignored for five minutes, and overlapping passes are refused.</li>
+            <li><strong>Scan.</strong> <code>repairPlans</code> runs off-main over the active folder plus the legacy sandbox folder, skipping the staged or dragging bundle.</li>
+            <li><strong>Decide.</strong> Legacy plist keys, orientation drift for line/dashed, a missing <code>Icon\r</code>, or an outdated runner version each produce a plan.</li>
+            <li><strong>Apply.</strong> Icon rendering and Finder updates stay on main; plist, model, runner, marker, and <code>codesign</code> work runs detached.</li>
+          </ol>
+        </article>
+
+        <article class="path-card" style="--path-c: var(--c-build)">
+          <span class="path-tag">safety</span>
+          <h3>Clean up orphans</h3>
+          <p>Nothing is deleted automatically. Cleanup is a read-only census followed by an explicit confirmation.</p>
+          <ol class="path-steps">
+            <li><strong>Enumerate.</strong> A detached census walks the current folder, but only treats marked <code>.app</code> bundles and spacer extensions as managed. Everything else is ignored.</li>
+            <li><strong>Resolve live.</strong> Read <code>file-data</code> paths from <code>com.apple.dock</code> <code>persistent-apps</code> and <code>persistent-others</code>.</li>
+            <li><strong>Filter.</strong> Unused means not live, not staged or dragging, and older than 60 seconds. If Dock preferences cannot be read, cleanup is disabled entirely.</li>
+            <li><strong>Confirm.</strong> The sheet lists candidates; approved items move to the Trash. Live and excluded items are skipped even if passed by mistake.</li>
+          </ol>
+        </article>
+
+        <article class="path-card" style="--path-c: var(--c-state)">
+          <span class="path-tag">move</span>
+          <h3>Switch the storage folder</h3>
+          <p>Old Dock tiles keep working because the Dock stores absolute paths. The app warns instead of pretending they moved.</p>
+          <ol class="path-steps">
+            <li><strong>Choose.</strong> <code>NSOpenPanel</code> selects a root; a security-scoped bookmark is stored in <code>UserDefaults</code>.</li>
+            <li><strong>Resolve.</strong> The effective folder is the selected root plus <code>DockDividers</code>, unless the root already has that name.</li>
+            <li><strong>Warn.</strong> If the old folder still backs live Dock tiles, an alert says those icons keep pointing there.</li>
+            <li><strong>Restage.</strong> A new artifact is built in the new folder and the census refreshes. Old bundles remain until the user removes the Dock tiles and cleans up.</li>
+          </ol>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="modules" aria-labelledby="modulesTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Module reference</p>
+          <h2 id="modulesTitle">The folders, and what lives in them</h2>
+          <p class="lede">Thirty-two app sources, one shared schema, one runner. Click a folder to read its files.</p>
+        </div>
+        <div class="module-tools">
+          <button class="ghost-btn" id="expandAll" type="button">Expand all</button>
+          <button class="ghost-btn" id="collapseAll" type="button">Collapse</button>
+        </div>
+      </div>
+
+      <div class="module-grid">
+        <details class="folder" open>
+          <summary><span class="folder-name">App/<span class="folder-count">2</span></span><span class="folder-sub">Application entry point and the observable state that coordinates everything.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>DockDividerApp.swift</code><span>A single <code>Window</code> scene with one <code>AppState</code>; no second editor window can share the draft.</span></div>
+            <div class="file-row"><code>AppState.swift</code><span>Draft owner, debounced staging and persistence, storage summary, lifecycle hooks, and the injectable <code>AppEnvironment</code>.</span></div>
+          </div>
+        </details>
+
+        <details class="folder" open>
+          <summary><span class="folder-name">Staging/<span class="folder-count">3</span></span><span class="folder-sub">The revisioned hot path between a draft and a draggable file.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>StagingController.swift</code><span>State machine, revision ownership, drag URL ownership, cancellation, and cleanup of replaced bundles.</span></div>
+            <div class="file-row"><code>BundleStagingService.swift</code><span>Off-main bundle assembly, native spacer creation, ad-hoc signing, quarantine removal, LaunchServices registration, runner lookup.</span></div>
+            <div class="file-row"><code>StagingModels.swift</code><span><code>StagedBundle</code>, <code>StagingState</code>, and user-facing typed <code>StagingError</code> with retry metadata.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Generator/<span class="folder-count">2</span></span><span class="folder-sub">Drawing and bundle-level side effects that need AppKit.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>IconRenderer.swift</code><span>Draws line, dashed, dot, label, symbol, image, and spacer styles; packs a ten-slot ICNS payload.</span></div>
+            <div class="file-row"><code>BundleSynthesizer.swift</code><span>Main-actor façade for Finder icons and filesystem notifications, plus repair-plan scanning and application.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Rendering/<span class="folder-count">3</span></span><span class="folder-sub">Identity, caching, and one-time image normalization.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>RenderKey.swift</code><span>Hashes only pixel-affecting fields; click actions, URLs, commands, and tooltip text are deliberately excluded.</span></div>
+            <div class="file-row"><code>RenderCache.swift</code><span>Three bounded caches: 64 rendered <code>CGImage</code>s, 12 ICNS payloads, 8 decoded source images, plus miss counters for tests.</span></div>
+            <div class="file-row"><code>CustomImageProcessor.swift</code><span>ImageIO downsampling to at most 1024 px PNG; AppKit fallback for vector formats such as SVG.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Models/<span class="folder-count">3</span></span><span class="folder-sub">The persisted design and its validation, free of UI dependencies.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>DividerModel.swift</code><span>Codable value with stable wire values: style, orientation, spacer size, color, geometry, label, image, action.</span></div>
+            <div class="file-row"><code>DividerValidation.swift</code><span>Warns only when a configuration would silently do nothing; appearance choices are always valid.</span></div>
+            <div class="file-row"><code>DividerModel+AppKit.swift</code><span>Color and <code>NSColor</code> presentation helpers kept out of the persisted value.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Storage/<span class="folder-count">7</span></span><span class="folder-sub">Where artifacts live, how they are identified, and how orphans are found.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>StorageLayout.swift</code><span>The <code>DockDividers</code> subfolder rule and canonical path helpers.</span></div>
+            <div class="file-row"><code>StorageLocationStore.swift</code><span>Security-scoped bookmark lifetime, folder picker, container warning, Finder reveal.</span></div>
+            <div class="file-row"><code>StorageMaintenance.swift</code><span>README, read-only census, live-item count, and Trash-only cleanup.</span></div>
+            <div class="file-row"><code>StorageCensus.swift</code><span><code>StorageItem</code>, <code>StorageSummary</code>, <code>StorageCensus</code>, and <code>StorageLiveSet</code>.</span></div>
+            <div class="file-row"><code>DockLiveItems.swift</code><span>Reads <code>persistent-apps</code> and <code>persistent-others</code> from <code>com.apple.dock</code>; an unreadable Dock returns <code>nil</code>.</span></div>
+            <div class="file-row"><code>BundleMarker.swift</code><span><code>.dockdivider.json</code> ownership marker, schema and runner version, legacy detection.</span></div>
+            <div class="file-row"><code>DraftPersistence.swift</code><span><code>Draft.json</code> plus a <code>DraftImage.png</code> sidecar; atomic writes, no base64 artwork in JSON.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Maintenance/<span class="folder-count">1</span></span><span class="folder-sub">Launch-time repair policy and throttling.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>BundleRepairer.swift</code><span>Non-overlapping passes, five-minute throttle per folder, active plus legacy directories, exclusion for the staged bundle.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Support/<span class="folder-count">1</span></span><span class="folder-sub">The one helper process the editor runs.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>BoundedProcess.swift</code><span>Hard-deadline execution for <code>shortcuts list</code>: drains output on a private queue, caps it, sends <code>SIGTERM</code>, then escalates to <code>SIGKILL</code>.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Views/<span class="folder-count">10</span></span><span class="folder-sub">The editor, preview, drag well, onboarding, and storage sheet.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>MainWindowView.swift</code><span>Two-column layout, sheet routing, storage footer, first-responder cleanup.</span></div>
+            <div class="file-row"><code>DockPreviewBar.swift</code><span>Simulated Dock glass, wallpaper, orientation switcher, preview light/dark toggle.</span></div>
+            <div class="file-row"><code>DragWellView.swift</code><span>Drag well UI and the transparent AppKit <code>NSDraggingSource</code> with a keyboard reveal fallback.</span></div>
+            <div class="file-row"><code>Settings/AppearanceControlsView.swift</code><span>Style-specific controls: thickness, height, offset, opacity, tint, label, symbol, image import.</span></div>
+            <div class="file-row"><code>Settings/ClickActionPickerView.swift</code><span>Apps and URL lists, system action picker, Shortcuts cache, script picker, shell command editor.</span></div>
+            <div class="file-row"><code>Settings/StyleSelectorView.swift</code><span>Six style chips; routes the draft to the matching appearance controls.</span></div>
+            <div class="file-row"><code>Settings/SFSymbolPickerPopover.swift</code><span>Searchable SF Symbol catalog with a curated fallback.</span></div>
+            <div class="file-row"><code>Settings/SettingsRowComponents.swift</code><span>Card chrome, labelled sliders, deferred bindings shared by the settings views.</span></div>
+            <div class="file-row"><code>Storage/StorageCleanupView.swift</code><span>Census sheet, candidate list, confirmation dialog, live-set-unavailable warning.</span></div>
+            <div class="file-row"><code>Onboarding/OnboardingView.swift</code><span>One-time welcome sheet, persisted with a single defaults flag.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Shared/<span class="folder-count">1</span></span><span class="folder-sub">One schema, compiled into two products.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>ActionConfig.swift</code><span><code>ActionType</code>, <code>SystemActionType</code>, and <code>ActionConfig</code>. Availability filtering for Launchpad and AirDrop lives here too.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">divider_runner/<span class="folder-count">1</span></span><span class="folder-sub">The generated tile's entire runtime.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>main.swift</code><span>Reads its own <code>ActionConfig.json</code>, dispatches one action, logs failures, exits. Fire-and-forget launches only.</span></div>
+          </div>
+        </details>
+
+        <details class="folder">
+          <summary><span class="folder-name">Tests/<span class="folder-count">2</span></span><span class="folder-sub">Isolation is part of the architecture.</span></summary>
+          <div class="file-list">
+            <div class="file-row"><code>DockDividerTests.swift</code><span>56 tests: wire values, persistence, artwork sidecars, renderer geometry and ICNS slots, staging revisions, cleanup exclusions, repair plans, storage warnings, validation.</span></div>
+            <div class="file-row"><code>DockDividerUITests.swift</code><span>UI smoke coverage with a temporary storage folder, dedicated defaults suite, and launch side effects disabled through <code>AppEnvironment</code>.</span></div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="section" id="artifacts" aria-labelledby="artifactsTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">On disk</p>
+          <h2 id="artifactsTitle">Two shapes of artifact</h2>
+          <p class="lede">An app bundle is for anything with a tooltip or a click. A spacer trigger file is for a true gap. Both are written atomically and can be removed from the Dock without any helper running.</p>
+        </div>
+      </div>
+
+      <div class="artifact-grid">
+        <article class="artifact-card">
+          <h3>Generated <code>.app</code> bundle</h3>
+          <p>Name = sanitized tooltip + an invisible zero-width UUID suffix.</p>
+          <div class="tree" role="img" aria-label="Generated app bundle tree">
+            <div class="t-row d0"><span class="t-dir">▾ Divider.app</span></div>
+            <div class="t-row d1"><span class="t-dir">▾ Contents/</span></div>
+            <div class="t-row d2"><span class="t-name">Info.plist</span><span class="t-note">LSUIElement · no CFBundleIconFile</span></div>
+            <div class="t-row d2"><span class="t-name">PkgInfo</span><span class="t-note">APPL????</span></div>
+            <div class="t-row d2"><span class="t-dir">▾ MacOS/</span></div>
+            <div class="t-row d3"><span class="t-name">divider_runner</span><span class="t-note">copied · 0755</span></div>
+            <div class="t-row d2"><span class="t-dir">▾ Resources/</span></div>
+            <div class="t-row d3"><span class="t-name">AppIcon.icns</span><span class="t-note">10 slots · 16 → 1024 px</span></div>
+            <div class="t-row d3"><span class="t-name">ActionConfig.json</span><span class="t-note">runtime action</span></div>
+            <div class="t-row d3"><span class="t-name">DividerModel.json</span><span class="t-note">no image bytes</span></div>
+            <div class="t-row d3"><span class="t-name">CustomImage.png</span><span class="t-note">image style only</span></div>
+            <div class="t-row d3"><span class="t-name">.dockdivider.json</span><span class="t-note">marker · runner v2</span></div>
+          </div>
+          <p class="tree-note"><strong>Known trade-off.</strong> The Finder custom icon is applied after signing, so <code>codesign --verify --deep --strict</code> reports Finder detritus. The bundle still verifies non-strictly; the signature is not treated as an integrity guarantee.</p>
+        </article>
+
+        <article class="artifact-card">
+          <h3>Storage folder</h3>
+          <p>Default: <code>~/Library/Application Support/DockDividers</code>. A custom root gets a <code>DockDividers</code> subfolder so it never fills with invisible apps.</p>
+          <div class="tree" role="img" aria-label="Storage folder tree">
+            <div class="t-row d0"><span class="t-dir">▾ DockDividers/</span></div>
+            <div class="t-row d1"><span class="t-name">README.txt</span><span class="t-note">what these files are</span></div>
+            <div class="t-row d1"><span class="t-name">Divider….app</span><span class="t-note">one per Dock tile</span></div>
+            <div class="t-row d1"><span class="t-name">.staging-…/</span><span class="t-note">transient build folder</span></div>
+            <div class="t-row d1"><span class="t-name">Spacer-XXXX.dockspace</span><span class="t-note">full gap</span></div>
+            <div class="t-row d1"><span class="t-name">Spacer-XXXX.docksmallspace</span><span class="t-note">half gap</span></div>
+            <div class="t-row d1"><span class="t-name">Spacer-XXXX.dockflexspace</span><span class="t-note">flexible gap</span></div>
+          </div>
+          <p class="tree-note"><strong>Draft lives elsewhere.</strong> <code>Draft.json</code> and <code>DraftImage.png</code> sit at the Application Support root, not inside <code>DockDividers</code>. The census ignores them, along with any other unmanaged file.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="concurrency" aria-labelledby="concTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Concurrency</p>
+          <h2 id="concTitle">Where each kind of work runs</h2>
+          <p class="lede">The split is deliberately small: AppKit stays on the main actor, file and subprocess work is detached, and state changes always return to main.</p>
+        </div>
+      </div>
+
+      <div class="conc-grid">
+        <article class="conc-card" style="--conc: var(--c-editor)">
+          <h3>Main actor</h3>
+          <p>UI, rendering, and anything AppKit or IconServices touches.</p>
+          <ul>
+            <li>SwiftUI bodies, bindings, sheets, alerts</li>
+            <li><code>AppState</code>, <code>StagingController</code>, <code>StorageLocationStore</code>, <code>BundleRepairer</code></li>
+            <li><code>IconRenderer</code> and <code>RenderCache</code></li>
+            <li><code>NSWorkspace.setIcon</code>, <code>noteFileSystemChanged</code>, <code>NSOpenPanel</code></li>
+            <li>Debounced <code>DraftPersistence.save</code> and state publication</li>
+          </ul>
+        </article>
+
+        <article class="conc-card" style="--conc: var(--c-build)">
+          <h3>Detached tasks</h3>
+          <p>Slow file, process, and scan work that must not block a slider.</p>
+          <ul>
+            <li>Bundle assembly, file copies, atomic move</li>
+            <li><code>xattr -cr</code>, <code>codesign</code>, <code>lsregister</code></li>
+            <li>Storage census and cleanup</li>
+            <li>Repair-plan scan and repair writes</li>
+            <li>Results are bridged back to main for state</li>
+          </ul>
+        </article>
+
+        <article class="conc-card" style="--conc: var(--c-runtime)">
+          <h3>Child processes</h3>
+          <p>Everything spawned by the app or by the generated runner.</p>
+          <ul>
+            <li><code>shortcuts list</code>, bounded by <code>BoundedProcess</code></li>
+            <li><code>divider_runner</code>, launched by the Dock</li>
+            <li><code>/bin/zsh</code>, <code>osascript</code>, <code>pmset</code>, <code>shortcuts run</code></li>
+            <li>Apps and URLs opened through LaunchServices</li>
+            <li>All runner launches are fire-and-forget</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="invariants" aria-labelledby="invTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Design rules</p>
+          <h2 id="invTitle">The invariants that keep it honest</h2>
+          <p class="lede">Most of the complexity in the codebase exists to protect these rules. They are also the best checklist for a change.</p>
+        </div>
+      </div>
+
+      <div class="inv-grid">
+        <article class="inv"><b>01</b><div><h3>One revision wins</h3><p>Every staging pass gets a monotonically increasing revision. Only the current revision may publish; stale results are deleted.</p></div></article>
+        <article class="inv"><b>02</b><div><h3>No partial bundles</h3><p>Build in <code>.staging-UUID</code>, sign there, then rename into place on the same volume. The Dock never sees a half-written bundle.</p></div></article>
+        <article class="inv"><b>03</b><div><h3>Preparing hides the old artifact</h3><p><code>.preparing</code> intentionally removes the previous URL from the draggable state, so a drag cannot carry stale content.</p></div></article>
+        <article class="inv"><b>04</b><div><h3>The drag owns the file</h3><p>Cancelled or rejected drags delete the consumed bundle. Successful drops keep it because a Dock tile now references it. A replacement is staged immediately.</p></div></article>
+        <article class="inv"><b>05</b><div><h3>Only touch our bundles</h3><p>A bundle is managed only if it carries <code>.dockdivider.json</code> or, for legacy builds, an embedded <code>divider_runner</code>.</p></div></article>
+        <article class="inv"><b>06</b><div><h3>Never delete live items</h3><p>Cleanup requires a readable Dock live set, skips staged and dragging URLs, and gives new items a 60-second grace period.</p></div></article>
+        <article class="inv"><b>07</b><div><h3>Artwork is stored once</h3><p>Draft and bundle JSON omit image bytes. Artwork lives in <code>DraftImage.png</code> or <code>CustomImage.png</code> and is hydrated for repair.</p></div></article>
+        <article class="inv"><b>08</b><div><h3>Thread discipline</h3><p>AppKit and IconServices on main; file I/O and subprocesses detached; only the short icon and filesystem calls hop back.</p></div></article>
+        <article class="inv"><b>09</b><div><h3>Repair is idempotent and throttled</h3><p>Five minutes per folder, no overlapping passes, and the active staged or dragging bundle is always excluded.</p></div></article>
+        <article class="inv"><b>10</b><div><h3>Tests never touch real state</h3><p><code>AppEnvironment</code> injects temporary storage, a dedicated defaults suite, a known live set, and recorder presenters.</p></div></article>
+      </div>
+    </section>
+
+    <section class="section" id="files" aria-labelledby="filesTitle">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Where to start</p>
+          <h2 id="filesTitle">Find the right seam</h2>
+          <p class="lede">A short routing table for common changes.</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>If you are changing…</th><th>Start here</th></tr></thead>
+          <tbody>
+            <tr><td>An editor control or its defaults</td><td><code>Views/Settings/…</code> and <code>Models/DividerModel.swift</code></td></tr>
+            <tr><td>A divider style</td><td><code>DividerStyle</code> → <code>Generator/IconRenderer.swift</code> → <code>AppearanceControlsView</code> → the spacer branch in <code>StagingController</code></td></tr>
+            <tr><td>Staging, signing, or bundle naming</td><td><code>Staging/BundleStagingService.swift</code> and <code>Staging/StagingController.swift</code></td></tr>
+            <tr><td>A click action</td><td><code>Shared/ActionConfig.swift</code> → <code>divider_runner/main.swift</code> → <code>ClickActionPickerView</code></td></tr>
+            <tr><td>Storage inspection or cleanup</td><td><code>Storage/StorageMaintenance.swift</code>, <code>StorageCensus.swift</code>, <code>StorageCleanupView.swift</code></td></tr>
+            <tr><td>Repairing old bundles</td><td><code>Maintenance/BundleRepairer.swift</code> and <code>BundleSynthesizer.repairPlans/applyRepair</code></td></tr>
+            <tr><td>Draft persistence</td><td><code>Storage/DraftPersistence.swift</code> and the debounced block in <code>AppState</code></td></tr>
+            <tr><td>Tests that must not touch the real app</td><td>Inject an isolated <code>AppEnvironment</code>; see <code>App/AppState.swift</code> and <code>DockDividerTests.swift</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Static architecture snapshot · generated from the source in <code>DockDivider/</code> · 3 Nov 2026</span>
+    <span>Self-contained HTML · no external assets · open it anywhere</span>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const $ = function (sel, root) { return (root || document).querySelector(sel); };
+  const $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+
+  /* ---------- theme ---------- */
+  const root = document.documentElement;
+  const modes = ["auto", "light", "dark"];
+  let theme = "auto";
+  try { theme = localStorage.getItem("dockdivider-architecture-theme") || "auto"; } catch (e) {}
+  if (modes.indexOf(theme) === -1) theme = "auto";
+
+  function applyTheme(next) {
+    theme = next;
+    root.setAttribute("data-theme", next);
+    root.style.colorScheme = next === "auto" ? "light dark" : next;
+    const label = $("#themeLabel");
+    if (label) label.textContent = next.charAt(0).toUpperCase() + next.slice(1);
+    const btn = $("#themeToggle");
+    if (btn) btn.setAttribute("aria-label", "Theme: " + next + ". Click to change.");
+    try { localStorage.setItem("dockdivider-architecture-theme", next); } catch (e) {}
+  }
+  applyTheme(theme);
+
+  const themeButton = $("#themeToggle");
+  if (themeButton) {
+    themeButton.addEventListener("click", function () {
+      applyTheme(modes[(modes.indexOf(theme) + 1) % modes.length]);
+    });
+  }
+
+  /* ---------- node info ---------- */
+  const nodeInfo = $("#nodeInfo");
+  $$(".node").forEach(function (node) {
+    node.addEventListener("click", function () {
+      $$(".node").forEach(function (other) { other.classList.remove("is-selected"); });
+      node.classList.add("is-selected");
+      if (!nodeInfo) return;
+      const name = node.querySelector(".n-name");
+      nodeInfo.innerHTML = "";
+      const strong = document.createElement("span");
+      strong.className = "node-info-name";
+      strong.textContent = name ? name.textContent : "Block";
+      const file = document.createElement("code");
+      file.textContent = node.dataset.file || "";
+      const role = document.createElement("span");
+      role.className = "role";
+      role.textContent = node.dataset.role || "";
+      nodeInfo.appendChild(strong);
+      nodeInfo.appendChild(file);
+      nodeInfo.appendChild(role);
+    });
+  });
+
+  /* ---------- walkthrough ---------- */
+  const steps = [
+    {
+      title: "Edit the draft",
+      sub: "one value, many controls",
+      kicker: "Step 01 · authoring",
+      nodes: ["main-window", "style", "appearance", "actions", "preview", "appstate", "model"],
+      flow: [
+        { label: "control", tone: "editor" },
+        { label: "DividerModel", tone: "domain" },
+        { label: "$draft", tone: "state" },
+        { label: "preview + staging input", tone: "state" }
+      ],
+      body: "<p>Everything in the editor binds to the same <code>DividerModel</code> held as <code>AppState.draft</code>. Style, appearance, label, artwork, and click behavior are fields on that one Codable value — there is no separate settings store to keep in sync.</p><p>The preview and the drag well read the same value, so what you see and what gets staged are always the same snapshot.</p>",
+      watch: "The view layer is deliberately thin: it edits values and calls a few AppState methods. It never touches the file system.",
+      files: ["Views/MainWindowView.swift", "Models/DividerModel.swift", "App/AppState.swift"]
+    },
+    {
+      title: "Debounce the burst",
+      sub: "stage and save are separate",
+      kicker: "Step 02 · settling",
+      nodes: ["appstate", "staging", "persistence"],
+      flow: [
+        { label: "$draft", tone: "state" },
+        { label: "250 ms", tone: "state" },
+        { label: "stage(draft)", tone: "state" },
+        { label: "500 ms", tone: "state" },
+        { label: "Draft.json + PNG", tone: "storage" }
+      ],
+      body: "<p><code>$draft</code> fans out into two debounced pipelines. After 250 ms of quiet, <code>stageImmediately()</code> takes a snapshot and hands it to the staging controller. After 500 ms, <code>DraftPersistence</code> writes <code>Draft.json</code> and, when needed, a <code>DraftImage.png</code> sidecar.</p><p>Saves run on the main actor after the debounce, so a slower older save cannot overwrite a newer draft. A final save also runs on <code>willTerminate</code>.</p>",
+      watch: "The debounce is why dragging immediately after an edit can briefly show Preparing… instead of stale artwork.",
+      files: ["App/AppState.swift:255–289", "Storage/DraftPersistence.swift"]
+    },
+    {
+      title: "Render the artwork",
+      sub: "cache what pixels depend on",
+      kicker: "Step 03 · drawing",
+      nodes: ["model", "renderkey", "rendercache", "iconrenderer", "imageproc"],
+      flow: [
+        { label: "DividerModel", tone: "domain" },
+        { label: "RenderKey", tone: "domain" },
+        { label: "RenderCache", tone: "build" },
+        { label: "IconRenderer", tone: "build" },
+        { label: "ICNS + preview", tone: "build" }
+      ],
+      body: "<p>The controller renders on the main actor because AppKit is not thread-safe. <code>RenderKey</code> reduces the model to the fields that can change pixels — style, geometry, tint, label, image identity — and deliberately drops click actions, URLs, and tooltip text. Editing those reuses the cached icon.</p><p><code>RenderCache</code> is intentionally small: 64 rendered CGImages, 12 ICNS payloads, and 8 decoded source images. Imported art is normalized once to a ≤1024 px PNG, so the ICNS pass never re-decodes a multi-megabyte photo.</p>",
+      watch: "The ICNS set contains ten slots from 16 to 1024 px; one CGImage is reused for slots that share a pixel size.",
+      files: ["Rendering/RenderKey.swift", "Rendering/RenderCache.swift", "Generator/IconRenderer.swift", "Rendering/CustomImageProcessor.swift"]
+    },
+    {
+      title: "Synthesize an app bundle",
+      sub: "hidden build, one rename",
+      kicker: "Step 04 · build",
+      nodes: ["staging", "iconrenderer", "stager", "synthesizer", "marker", "appbundle"],
+      flow: [
+        { label: "snapshot", tone: "state" },
+        { label: "IconRenderer", tone: "build" },
+        { label: "BundleStagingService", tone: "build" },
+        { label: "codesign", tone: "build" },
+        { label: "atomic rename", tone: "storage" }
+      ],
+      body: "<p><code>BundleStagingService</code> runs off-main in a hidden <code>.staging-UUID</code> folder inside the storage directory. It copies the prebuilt <code>divider_runner</code>, writes <code>Info.plist</code>, <code>PkgInfo</code>, the icon, <code>ActionConfig.json</code>, the model JSON, optional artwork, and an ownership marker.</p><p>It then clears extended attributes, ad-hoc signs the bundle with <code>codesign</code>, and performs one same-volume rename into place. A half-written bundle is never visible to the Dock, cleanup, or the user.</p>",
+      watch: "The bundle name is the sanitized tooltip plus an invisible zero-width UUID suffix, so tiles stay visually nameless but filenames stay unique.",
+      files: ["Staging/BundleStagingService.swift", "Storage/BundleMarker.swift", "Staging/StagingModels.swift"]
+    },
+    {
+      title: "Publish exactly one revision",
+      sub: "stale results are deleted",
+      kicker: "Step 05 · publish",
+      nodes: ["staging", "appstate", "appbundle", "folder"],
+      flow: [
+        { label: "revision n", tone: "state" },
+        { label: "ready bundle", tone: "storage" },
+        { label: "previous deleted", tone: "storage" },
+        { label: "Dock can drag", tone: "runtime" }
+      ],
+      body: "<p>Each pass increments a revision and cancels the previous task. When a result returns, it is accepted only if its revision is still current; stale results are deleted. While preparing, <code>StagingState</code> hides the previous artifact so a drag cannot start with content that no longer matches the draft.</p><p>On success the previous unconsumed bundle is removed, the state becomes <code>.ready</code>, the custom Finder icon is applied on main, and LaunchServices registration runs in the background.</p>",
+      watch: "One artifact is ready at a time. Bundles already accepted by the Dock are not counted as “previous” and are never deleted here.",
+      files: ["Staging/StagingController.swift:110–337", "Staging/StagingModels.swift"]
+    },
+    {
+      title: "Drag ownership",
+      sub: "cancel deletes, drop keeps",
+      kicker: "Step 06 · handoff",
+      nodes: ["dragwell", "appstate", "staging", "appbundle", "dock"],
+      flow: [
+        { label: "DragWellView", tone: "editor" },
+        { label: "consume URL", tone: "state" },
+        { label: "restage", tone: "state" },
+        { label: "Dock tile", tone: "runtime" }
+      ],
+      body: "<p><code>DragWellView</code> overlays a transparent AppKit <code>NSDraggingSource</code>. On drag it calls <code>consumeStagedBundleForDrag()</code>: the URL is marked consumed, ownership is recorded, and an immediate restage begins for the next drag.</p><p>When the session ends, an empty operation means cancel or reject, so the consumed bundle is deleted. A successful drop leaves it in place because a Dock tile now references it. Cleanup and repair both exclude the active drag URL.</p>",
+      watch: "This is the only path that hands a file to the Dock. There is no daemon, menu bar agent, or background process left behind.",
+      files: ["Views/DragWellView.swift:253–391", "Staging/StagingController.swift:171–208"]
+    },
+    {
+      title: "Click at runtime",
+      sub: "a tiny separate process",
+      kicker: "Step 07 · runtime",
+      nodes: ["dock", "runner", "appbundle", "actionconfig"],
+      flow: [
+        { label: "Dock click", tone: "runtime" },
+        { label: "divider_runner", tone: "runtime" },
+        { label: "ActionConfig.json", tone: "domain" },
+        { label: "apps · URL · shell", tone: "runtime" }
+      ],
+      body: "<p>The Dock tile is a minimal <code>.app</code> with <code>LSUIElement = true</code>. When clicked, macOS launches its embedded <code>divider_runner</code>. The runner locates <code>Contents/Resources/ActionConfig.json</code> relative to its own executable and decodes the shared <code>ActionConfig</code> type.</p><p>It dispatches exactly one action — open apps and URLs, a system utility, a Shortcut, or a shell command — using fire-and-forget launches, then exits. Long-running commands never keep the helper alive. <code>--version</code> lets the app detect outdated runners.</p>",
+      watch: "This is also why the app ships outside the App Store instead of sandboxed: the runner may execute shell commands, Shortcuts, and AppleScript on the user’s behalf.",
+      files: ["divider_runner/main.swift", "Shared/ActionConfig.swift", "Views/Settings/ClickActionPickerView.swift"]
+    }
+  ];
+
+  const stepList = $("#stepList");
+  const stepDetail = $("#stepDetail");
+  const counter = $("#stepCounter");
+  let active = 0;
+
+  if (stepList) {
+    steps.forEach(function (step, index) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "step-tab";
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-controls", "stepDetail");
+      button.dataset.index = String(index);
+      button.innerHTML =
+        '<span class="step-num">0' + (index + 1) + '</span>' +
+        '<span><span class="step-title"></span><span class="step-sub"></span></span>';
+      button.querySelector(".step-title").textContent = step.title;
+      button.querySelector(".step-sub").textContent = step.sub;
+      button.addEventListener("click", function () { selectStep(index, true); });
+      stepList.appendChild(button);
+    });
+  }
+
+  function selectStep(index, scrollOnMobile, focusMap) {
+    active = (index + steps.length) % steps.length;
+    if (focusMap === undefined) focusMap = true;
+    const step = steps[active];
+
+    $$(".step-tab").forEach(function (tab, tabIndex) {
+      const isActive = tabIndex === active;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+
+    if (counter) counter.textContent = (active + 1) + " / " + steps.length;
+
+    if (stepDetail) {
+      const flow = step.flow.map(function (item) {
+        return '<span class="flow-chip tone-' + item.tone + '"><i></i>' + escapeHTML(item.label) + '</span>';
+      }).join('<span class="flow-arrow">→</span>');
+
+      const files = step.files.map(function (file) {
+        return '<code>' + escapeHTML(file) + '</code>';
+      }).join('');
+
+      stepDetail.innerHTML =
+        '<div class="detail-top"><span class="detail-kicker">' + escapeHTML(step.kicker) + '</span><span class="detail-count">' + (active + 1) + ' / ' + steps.length + '</span></div>' +
+        '<h3>' + escapeHTML(step.title) + '</h3>' +
+        '<div class="mini-flow">' + flow + '</div>' +
+        step.body +
+        '<div class="watch"><span class="watch-label">Watch for</span><p>' + escapeHTML(step.watch) + '</p></div>' +
+        '<div class="file-chips">' + files + '</div>';
+    }
+
+    const map = $("#laneMap");
+    if (map && focusMap) {
+      map.classList.add("has-focus");
+      $$(".node").forEach(function (node) {
+        node.classList.remove("is-selected");
+        node.classList.toggle("is-hot", step.nodes.indexOf(node.dataset.node) !== -1);
+      });
+    }
+
+    if (scrollOnMobile && window.matchMedia("(max-width: 980px)").matches && stepDetail) {
+      stepDetail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }
+
+  function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, function (character) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character];
+    });
+  }
+
+  const prev = $("#prevStep");
+  const next = $("#nextStep");
+  if (prev) prev.addEventListener("click", function () { selectStep(active - 1); });
+  if (next) next.addEventListener("click", function () { selectStep(active + 1); });
+
+  document.addEventListener("keydown", function (event) {
+    if (!event.target.closest || !event.target.closest("#walkthrough")) return;
+    if (event.target.closest("input, textarea, select")) return;
+    if (event.key === "ArrowLeft") { event.preventDefault(); selectStep(active - 1); }
+    if (event.key === "ArrowRight") { event.preventDefault(); selectStep(active + 1); }
+  });
+
+  selectStep(0, false, false);
+
+  /* ---------- module expand/collapse ---------- */
+  const expandAll = $("#expandAll");
+  const collapseAll = $("#collapseAll");
+  if (expandAll) expandAll.addEventListener("click", function () {
+    $$("details.folder").forEach(function (item) { item.open = true; });
+  });
+  if (collapseAll) collapseAll.addEventListener("click", function () {
+    $$("details.folder").forEach(function (item) { item.open = false; });
+  });
+
+  /* ---------- active nav ---------- */
+  const navLinks = $$(".topbar nav a");
+  if ("IntersectionObserver" in window && navLinks.length) {
+    const observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        navLinks.forEach(function (link) {
+          link.classList.toggle("is-active", link.getAttribute("href") === "#" + entry.target.id);
+        });
+      });
+    }, { rootMargin: "-25% 0px -65% 0px", threshold: 0 });
+    $$("main section[id]").forEach(function (section) { observer.observe(section); });
+  }
+})();
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@
 # Optional:
 #   SIGNING_IDENTITY  "Developer ID Application: Name (TEAM)"
 #                     (auto-detected from the keychain when omitted)
-#   DEVELOPMENT_TEAM  Apple team ID (read from the project when omitted)
+#   DEVELOPMENT_TEAM  Apple team ID. Required unless the project sets one.
 #   RELEASE_VERSION   Overrides MARKETING_VERSION
 #   BUILD_NUMBER      Overrides CURRENT_PROJECT_VERSION
 #   NOTARIZE=0        Skip notarization for a local signed dry run
@@ -57,7 +57,7 @@ TEAM_ID="${DEVELOPMENT_TEAM:-$(setting DEVELOPMENT_TEAM)}"
 
 [[ -n "$VERSION" ]] || fail "Could not read MARKETING_VERSION."
 [[ -n "$BUILD_NUMBER" ]] || fail "Could not read CURRENT_PROJECT_VERSION."
-[[ -n "$TEAM_ID" ]] || fail "Set DEVELOPMENT_TEAM."
+[[ -n "$TEAM_ID" ]] || fail "Set DEVELOPMENT_TEAM (the project intentionally ships without one)."
 
 if [[ -z "${SIGNING_IDENTITY:-}" ]]; then
   SIGNING_IDENTITY="$(

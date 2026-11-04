@@ -1,7 +1,11 @@
 # Releasing DockDivider
 
-This is the checklist for a GitHub release. Everything ships as a signed,
-notarized DMG attached to a GitHub Release; there is no App Store build.
+> **Status:** This runbook is not active yet. It requires a paid Apple Developer
+> Program membership and a Developer ID certificate. The project currently
+> publishes source only; no signed binaries are available.
+
+When this path is active, everything ships as a signed, notarized DMG attached
+to a GitHub Release; there is no App Store build.
 
 ## One-time setup
 
@@ -58,7 +62,11 @@ Useful overrides:
 - `BUILD_NUMBER=2` — override the build number.
 - `SIGNING_IDENTITY="Developer ID Application: …"` — pick a specific identity
   when more than one is installed.
-- `DEVELOPMENT_TEAM=…` — override the team read from the project.
+- `DEVELOPMENT_TEAM=…` — required for a release because the checked-in project
+  intentionally ships without a team. Forks can set their own here.
+
+The checked-in project intentionally has no team, so pass `DEVELOPMENT_TEAM`
+on the command line; no project edit or committed team ID is required.
 
 The script archives a universal Release, signs the app and its embedded
 `divider_runner` with hardened runtime and a timestamp, verifies the signature,

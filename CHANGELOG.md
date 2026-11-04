@@ -27,5 +27,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Security
 
 - DockDivider never edits `com.apple.dock.plist` and never terminates the Dock.
-- Generated divider bundles are ad-hoc signed locally; release builds of
-  DockDivider itself are signed and notarized.
+- Generated divider bundles are ad-hoc signed locally. DockDivider itself can
+  be signed and notarized for distribution with a Developer ID; no signing
+  credentials are part of the repository.
