@@ -106,8 +106,7 @@ and open `DockDivider-<version>.dmg`:
 
 1. Drag **DockDivider** onto the **Applications** shortcut in the same window.
 2. Launch it from Applications. Release builds are signed with a Developer ID
-   certificate and notarized by Apple, so Gatekeeper opens them without a
-   right-click bypass or a trip to Privacy & Security.
+   certificate and notarized by Apple.
 
 Each release publishes a SHA-256 checksum next to the disk image, if you want to
 check the download first:
