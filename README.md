@@ -101,19 +101,29 @@ choose, and it ad-hoc signs each generated bundle so the Dock can launch it.
 
 ## Install
 
-DockDivider is currently distributed as source only: there are no prebuilt
-release binaries. Build it from source using the steps below.
+Download the latest [GitHub Release](https://github.com/jackbbb95/DockDivider/releases/latest)
+and open `DockDivider-<version>.dmg`:
 
-Signed and notarized builds require a paid Apple Developer Program membership
-and a Developer ID certificate. That release path is documented in
-[docs/RELEASE.md](docs/RELEASE.md), but it is not active yet. If a release is
-published later, it will be linked from
-[GitHub Releases](https://github.com/jackbbb95/DockDivider/releases).
+1. Drag **DockDivider** onto the **Applications** shortcut in the same window.
+2. Launch it from Applications. Release builds are signed with a Developer ID
+   certificate and notarized by Apple, so Gatekeeper opens them without a
+   right-click bypass or a trip to Privacy & Security.
 
-A source build is unsigned, so macOS may require confirming it in
-**System Settings > Privacy & Security**. Actions that drive System Events
-(Toggle Dark Mode, Toggle Mute) may ask for Automation permission the first
-time; DockDivider does not need Accessibility or Full Disk Access.
+Each release publishes a SHA-256 checksum next to the disk image, if you want to
+check the download first:
+
+```bash
+shasum -a 256 -c DockDivider-<version>.dmg.sha256
+```
+
+Onboarding opens once on first launch; after that DockDivider sits in the menu
+bar. It requires macOS 13.0 (Ventura) or later on Apple silicon or Intel.
+
+Actions that drive System Events (Toggle Dark Mode, Toggle Mute) may ask for
+Automation permission the first time; DockDivider does not need Accessibility or
+Full Disk Access.
+
+To build from source instead, see [Building and running](#building-and-running).
 
 ---
 
@@ -188,9 +198,9 @@ See [docs/RELEASE.md](docs/RELEASE.md) for notarization setup, the
 `scripts/release.sh` command, verification steps, and the GitHub release
 checklist. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
-Signed, notarized releases require a paid Apple Developer Program membership,
-which this project does not currently use. Treat that runbook as the future
-path until the membership and Developer ID certificate exist.
+Published releases are signed with a Developer ID Application certificate and
+notarized by Apple. The signing identity and notary credentials stay outside the
+repository.
 
 ---
 

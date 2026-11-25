@@ -101,6 +101,7 @@ xcodebuild \
   ONLY_ACTIVE_ARCH=NO \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+  CODE_SIGN_STYLE=Manual \
   OTHER_CODE_SIGN_FLAGS="--timestamp"
 
 APP_IN_ARCHIVE="$ARCHIVE/Products/Applications/DockDivider.app"

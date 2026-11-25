@@ -1,11 +1,7 @@
 # Releasing DockDivider
 
-> **Status:** This runbook is not active yet. It requires a paid Apple Developer
-> Program membership and a Developer ID certificate. The project currently
-> publishes source only; no signed binaries are available.
-
-When this path is active, everything ships as a signed, notarized DMG attached
-to a GitHub Release; there is no App Store build.
+Everything ships as a signed, notarized DMG attached to a GitHub Release; there
+is no App Store build.
 
 ## One-time setup
 

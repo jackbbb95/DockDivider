@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.0] - 2026-11-25
+
 ### Added
 
 - Line, dashed, dot, label, spacer, and custom-image divider styles with a live
