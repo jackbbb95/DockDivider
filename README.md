@@ -16,7 +16,6 @@ bar agent, or background process left behind.
 ![macOS 13+](https://img.shields.io/badge/macOS-13.0%2B-blue)
 ![Swift 5](https://img.shields.io/badge/Swift-5%20language%20mode-orange)
 ![Xcode 16+](https://img.shields.io/badge/Xcode-16%2B-blue)
-[![CI](https://github.com/jackbbb95/DockDivider/actions/workflows/ci.yml/badge.svg)](https://github.com/jackbbb95/DockDivider/actions/workflows/ci.yml)
 
 ---
 
